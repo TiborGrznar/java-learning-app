@@ -1,0 +1,8 @@
+﻿# Nastavenia IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Lokalne premenne prostredia - nikdy necommitovat skutocne hesla/secrety
+.env
+*.env.local
