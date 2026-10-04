@@ -17,7 +17,7 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    private static final String ROLE_CLAIM = "role";
+    static final String ROLE_CLAIM = "role";
 
     private final JwtProperties properties;
     private final SecretKey signingKey;
