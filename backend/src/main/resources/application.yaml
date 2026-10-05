@@ -7,6 +7,13 @@ spring:
 server:
   port: 8080
 
+app:
+  jwt:
+    # Base64-encoded HMAC key, at least 256 bits. Required, no default on purpose.
+    secret: ${JWT_SECRET}
+    access-token-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
+
 ---
 spring:
   config:
