@@ -1,3 +1,6 @@
+
+
+Readme · MD
 # Java Learning App
 
 Interactive web application for learning the Java programming language. Each learning module combines theory, a quiz and a coding task. Students track their progress, teachers follow their classes, administrators manage schools and users.
@@ -11,28 +14,46 @@ Work in progress.
 | Area | State |
 |------|-------|
 | Database schema (Flyway) and JPA entities | Done |
-| Authentication (JWT access token + rotating refresh token) | In progress, see `feature/auth` |
+| Authentication (JWT access token + rotating refresh token) | Done |
+| User, school and class management | Planned |
 | Quizzes, coding tasks, progress tracking | Planned |
 | Sandboxed execution of student code | Planned |
 | Frontend (React + TypeScript) | Not started |
 
-No REST endpoints are available yet.
+## API
+
+All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires a valid access token in the `Authorization: Bearer <token>` header.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/register` | Creates a student account (`201`). The role is always `STUDENT` |
+| POST | `/auth/login` | Returns an access token (15 min) and a refresh token (7 days) |
+| POST | `/auth/refresh` | Exchanges a refresh token for a new token pair, the old refresh token is revoked |
+| POST | `/auth/logout` | Revokes the given refresh token (`204`) |
+
+Errors use a uniform JSON body. `code` is a stable identifier for client logic, `message` is a Slovak text for the user, `fieldErrors` is present only for validation errors:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Formulár obsahuje chyby",
+  "fieldErrors": { "email": "E-mail nemá platný formát" }
+}
+```
 
 ## Tech stack
 
 - **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, Lombok, Maven
 - **Database:** MySQL 8 (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
-
-Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
+  Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
 
 ## Prerequisites
 
 - JDK 25
 - Docker (for the local MySQL container)
 - Git
-
-Maven is not required, the repository contains the Maven Wrapper.
+  Maven is not required, the repository contains the Maven Wrapper.
 
 ## Getting started
 
@@ -90,7 +111,7 @@ cd backend
 .\mvnw.cmd test
 ```
 
-The tests need the database container and the environment variables from step 3.
+The tests need the database container and the environment variables from step 3 (including `JWT_SECRET`). The integration tests run against the local development database, every test is rolled back, so no data is left behind.
 
 ## Project structure
 
@@ -99,7 +120,12 @@ The tests need the database container and the environment variables from step 3.
 ├── backend/              Spring Boot application
 │   └── src/main/
 │       ├── java/com/tgrznar/javalearningapp/
-│       │   ├── auth/         authentication (JWT, security config, refresh tokens)
+│       │   ├── auth/         authentication
+│       │   │   ├── dto/          request and response records
+│       │   │   ├── exception/    authentication exceptions
+│       │   │   ├── security/     JWT service, filter, security config
+│       │   │   └── token/        refresh token entity, repository and service
+│       │   ├── common/       global exception handler and error body
 │       │   ├── user/ school/ module/ quizquestion/ codingtask/
 │       │   └── quizresult/ codingresult/ userprogress/
 │       └── resources/
@@ -121,3 +147,4 @@ Schema changes are managed by Flyway. An applied migration is never edited, ever
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `refactor:`, `test:`, `docs:`).
 - Dependency and build changes are committed separately from feature code.
 - Files are staged by explicit path, not with `git add .`.
+ 
