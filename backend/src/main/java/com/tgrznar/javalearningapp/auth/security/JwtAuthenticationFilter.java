@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.auth;
+package com.tgrznar.javalearningapp.auth.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;

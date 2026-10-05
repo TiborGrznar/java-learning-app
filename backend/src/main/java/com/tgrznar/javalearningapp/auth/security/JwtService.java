@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.auth;
+package com.tgrznar.javalearningapp.auth.security;
 
 import com.tgrznar.javalearningapp.user.User;
 import io.jsonwebtoken.Claims;

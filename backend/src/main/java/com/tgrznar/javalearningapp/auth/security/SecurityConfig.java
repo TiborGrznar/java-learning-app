@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.auth;
+package com.tgrznar.javalearningapp.auth.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

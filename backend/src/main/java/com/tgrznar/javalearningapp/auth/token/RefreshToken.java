@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.auth;
+package com.tgrznar.javalearningapp.auth.token;
 
 import com.tgrznar.javalearningapp.user.User;
 import jakarta.persistence.Column;

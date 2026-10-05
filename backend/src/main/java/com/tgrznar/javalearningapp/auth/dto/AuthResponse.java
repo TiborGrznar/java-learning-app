@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.auth;
+package com.tgrznar.javalearningapp.auth.dto;
 
 import com.tgrznar.javalearningapp.user.UserRole;
 

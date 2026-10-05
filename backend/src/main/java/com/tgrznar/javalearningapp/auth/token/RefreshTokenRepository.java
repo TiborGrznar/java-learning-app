@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.auth;
+package com.tgrznar.javalearningapp.auth.token;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
