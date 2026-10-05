@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 /** Payload carrying a raw refresh token; used by both refresh and logout. */
 public record RefreshRequest(
 
-        @NotBlank
+        @NotBlank(message = "Chýba obnovovací token")
         String refreshToken
 ) {
 }
