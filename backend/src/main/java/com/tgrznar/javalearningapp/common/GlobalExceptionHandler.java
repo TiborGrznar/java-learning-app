@@ -29,9 +29,14 @@ import java.util.Map;
  * INVALID_CREDENTIALS    401     wrong e-mail or password (indistinguishable on purpose)
  * INVALID_REFRESH_TOKEN  401     session expired, drop tokens and redirect to login
  * INVALID_TOKEN          401     access token refers to a missing user, drop tokens, redirect to login
+ * UNAUTHENTICATED        401     access token missing, invalid or expired, try /refresh once, then redirect to login
  * ACCOUNT_DISABLED       403     account deactivated, show a message, no retry
+ * ACCESS_DENIED          403     logged in but lacking the role, show a message, keep the tokens
  * EMAIL_ALREADY_EXISTS   409     e-mail is taken, show in the registration form
  * </pre>
+ * <p>
+ * UNAUTHENTICATED and ACCESS_DENIED are produced by the security filter chain, not by this class:
+ * see JsonAuthenticationEntryPoint and JsonAccessDeniedHandler in auth.security.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {

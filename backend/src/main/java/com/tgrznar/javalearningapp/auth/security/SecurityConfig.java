@@ -2,21 +2,29 @@ package com.tgrznar.javalearningapp.auth.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * Role checks live on the controller methods (@PreAuthorize("hasRole('ADMIN')") and similar),
+ * enabled by @EnableMethodSecurity. This class only decides what needs a login at all.
+ * Every new endpoint with a role restriction must have a test proving a wrong role gets 403.
+ */
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   JwtService jwtService,
+                                                   JsonAuthenticationEntryPoint authenticationEntryPoint,
+                                                   JsonAccessDeniedHandler accessDeniedHandler) throws Exception {
         http
                 // Stateless API authenticated by a bearer token, no cookies or sessions,
                 // so there is nothing for CSRF to protect.
@@ -27,8 +35,10 @@ public class SecurityConfig {
                         // Error dispatches must stay open, otherwise validation errors turn into 401.
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
-                // Unauthenticated requests get 401 instead of the default redirect/403.
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                // 401 (no usable token) and 403 (wrong role) both answer with the uniform JSON error body.
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
