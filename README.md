@@ -1,6 +1,3 @@
-
-
-Readme · MD
 # Java Learning App
 
 Interactive web application for learning the Java programming language. Each learning module combines theory, a quiz and a coding task. Students track their progress, teachers follow their classes, administrators manage schools and users.
@@ -46,14 +43,16 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 - **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, Lombok, Maven
 - **Database:** MySQL 8 (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
-  Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
+
+Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
 
 ## Prerequisites
 
 - JDK 25
 - Docker (for the local MySQL container)
 - Git
-  Maven is not required, the repository contains the Maven Wrapper.
+
+Maven is not required, the repository contains the Maven Wrapper.
 
 ## Getting started
 
@@ -75,6 +74,10 @@ Fill in the values in `.env` (it is git-ignored and must never be committed):
 | `JWT_SECRET` | Base64-encoded HMAC key, at least 256 bits. Required, there is no default |
 | `JWT_ACCESS_TTL` | Optional, access token lifetime (default `15m`) |
 | `JWT_REFRESH_TTL` | Optional, refresh token lifetime (default `7d`) |
+| `ADMIN_EMAIL` | Optional, e-mail of the first administrator (see [First administrator](#first-administrator)) |
+| `ADMIN_PASSWORD` | Optional, password of the first administrator: at least 12 characters, at most 72 bytes. Remove it from the environment after the first start |
+| `ADMIN_NAME` | Optional, first name of the first administrator (default `Admin`) |
+| `ADMIN_SURNAME` | Optional, surname of the first administrator (default `Administrátor`) |
 
 Generate a `JWT_SECRET` (PowerShell):
 
@@ -113,24 +116,47 @@ cd backend
 
 The tests need the database container and the environment variables from step 3 (including `JWT_SECRET`). The integration tests run against the local development database, every test is rolled back, so no data is left behind.
 
+## First administrator
+
+Only an administrator can create teachers and other administrators, so the first one is created at startup from the environment:
+
+1. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (optionally also `ADMIN_NAME` and `ADMIN_SURNAME`) before starting the backend.
+2. If the database contains no administrator, the account is created and the log shows `Created the first administrator account ...`. If an administrator already exists, the variables are ignored: an existing account is never changed or replaced, and an existing student or teacher account is never promoted.
+3. Log in with `POST /api/v1/auth/login`.
+4. Remove `ADMIN_PASSWORD` from the environment. The password is stored only as a hash, the variable is not needed any more.
+
+The application refuses to start when the configuration is unusable: only one of `ADMIN_EMAIL` and `ADMIN_PASSWORD` is set, the e-mail is malformed, the password has fewer than 12 characters or more than 72 bytes (characters with diacritics take more than one byte), or an account with that e-mail already exists.
+
+**Recovery.** There is no password reset or password change yet. If no administrator can log in, delete the administrator in the database and start the application again with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set:
+
+```sql
+DELETE FROM users WHERE role = 'admin';
+```
+
+Never put the real administrator password into shell commands or tools such as Postman: the shell history and cloud sync keep it in plain text. Use a throwaway password for local development.
+
 ## Project structure
 
 ```
 .
 ├── backend/              Spring Boot application
-│   └── src/main/
-│       ├── java/com/tgrznar/javalearningapp/
-│       │   ├── auth/         authentication
-│       │   │   ├── dto/          request and response records
-│       │   │   ├── exception/    authentication exceptions
-│       │   │   ├── security/     JWT service, filter, security config
-│       │   │   └── token/        refresh token entity, repository and service
-│       │   ├── common/       global exception handler and error body
-│       │   ├── user/ school/ module/ quizquestion/ codingtask/
-│       │   └── quizresult/ codingresult/ userprogress/
-│       └── resources/
-│           ├── application.yaml
-│           └── db/migration/ Flyway migrations (V1, V2, ...)
+│   └── src/
+│       ├── main/
+│       │   ├── java/com/tgrznar/javalearningapp/
+│       │   │   ├── auth/         authentication
+│       │   │   │   ├── dto/          request and response records
+│       │   │   │   ├── exception/    authentication exceptions
+│       │   │   │   ├── security/     JWT service, filter, security config, 401/403 JSON handlers
+│       │   │   │   └── token/        refresh token entity, repository and service
+│       │   │   ├── common/       global exception handler and error body
+│       │   │   ├── user/         user entity, repository, profile endpoint
+│       │   │   │   └── bootstrap/    creation of the first administrator at startup
+│       │   │   ├── school/ module/ quizquestion/ codingtask/
+│       │   │   └── quizresult/ codingresult/ userprogress/
+│       │   └── resources/
+│       │       ├── application.yaml
+│       │       └── db/migration/ Flyway migrations (V1, V2, ...)
+│       └── test/             unit and integration tests, same package layout
 ├── docker-compose.yml    local MySQL
 └── .env.example          template of required environment variables
 ```
@@ -147,4 +173,3 @@ Schema changes are managed by Flyway. An applied migration is never edited, ever
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `refactor:`, `test:`, `docs:`).
 - Dependency and build changes are committed separately from feature code.
 - Files are staged by explicit path, not with `git add .`.
- 
