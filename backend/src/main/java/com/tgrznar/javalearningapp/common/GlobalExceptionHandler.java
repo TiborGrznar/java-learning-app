@@ -6,6 +6,8 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.school.SchoolNameAlreadyExistsException;
+import com.tgrznar.javalearningapp.school.SchoolNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -22,17 +24,19 @@ import java.util.Map;
  * <p>
  * Frontend contract: the client decides by {@code code}, never by the message text.
  * <pre>
- * code                   status  meaning / expected frontend reaction
- * VALIDATION_ERROR       400     invalid form input, show fieldErrors next to the fields
- * INVALID_REQUEST_BODY   400     unreadable JSON, a client bug, not shown to the user
- * PASSWORD_MISMATCH      400     password and confirmation differ, show in the form
- * INVALID_CREDENTIALS    401     wrong e-mail or password (indistinguishable on purpose)
- * INVALID_REFRESH_TOKEN  401     session expired, drop tokens and redirect to login
- * INVALID_TOKEN          401     access token refers to a missing user, drop tokens, redirect to login
- * UNAUTHENTICATED        401     access token missing, invalid or expired, try /refresh once, then redirect to login
- * ACCOUNT_DISABLED       403     account deactivated, show a message, no retry
- * ACCESS_DENIED          403     logged in but lacking the role, show a message, keep the tokens
- * EMAIL_ALREADY_EXISTS   409     e-mail is taken, show in the registration form
+ * code                        status  meaning / expected frontend reaction
+ * VALIDATION_ERROR            400     invalid form input, show fieldErrors next to the fields
+ * INVALID_REQUEST_BODY        400     unreadable JSON, a client bug, not shown to the user
+ * PASSWORD_MISMATCH           400     password and confirmation differ, show in the form
+ * INVALID_CREDENTIALS         401     wrong e-mail or password (indistinguishable on purpose)
+ * INVALID_REFRESH_TOKEN       401     session expired, drop tokens and redirect to login
+ * INVALID_TOKEN               401     access token refers to a missing user, drop tokens, redirect to login
+ * UNAUTHENTICATED             401     access token missing, invalid or expired, try /refresh once, then redirect to login
+ * ACCOUNT_DISABLED            403     account deactivated, show a message, no retry
+ * ACCESS_DENIED               403     logged in but lacking the role, show a message, keep the tokens
+ * SCHOOL_NOT_FOUND            404     school with the given id does not exist, show a message
+ * EMAIL_ALREADY_EXISTS        409     e-mail is taken, show in the registration form
+ * SCHOOL_NAME_ALREADY_EXISTS  409     school name is taken, show in the school form
  * </pre>
  * <p>
  * UNAUTHENTICATED and ACCESS_DENIED are produced by the security filter chain, not by this class:
@@ -99,5 +103,19 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleAccountDisabled(AccountDisabledException ex) {
         return ErrorResponse.of("ACCOUNT_DISABLED", ex.getMessage());
+    }
+
+    /** 404 SCHOOL_NOT_FOUND: no school with the requested id. */
+    @ExceptionHandler(SchoolNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleSchoolNotFound() {
+        return ErrorResponse.of("SCHOOL_NOT_FOUND", "Škola neexistuje");
+    }
+
+    /** 409 SCHOOL_NAME_ALREADY_EXISTS: another school already uses this name (case-insensitive). */
+    @ExceptionHandler(SchoolNameAlreadyExistsException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleSchoolNameExists() {
+        return ErrorResponse.of("SCHOOL_NAME_ALREADY_EXISTS", "Škola s týmto názvom už existuje");
     }
 }
