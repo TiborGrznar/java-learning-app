@@ -32,6 +32,9 @@ public class School {
     @Column(nullable = false)
     private String address;
 
+    @Column(name = "is_active", nullable = false)
+    private boolean active = true;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
