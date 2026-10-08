@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.model;
 
 import com.tgrznar.javalearningapp.school.School;
 import jakarta.persistence.Column;

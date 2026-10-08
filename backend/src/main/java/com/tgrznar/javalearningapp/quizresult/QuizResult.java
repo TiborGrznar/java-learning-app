@@ -1,7 +1,7 @@
 package com.tgrznar.javalearningapp.quizresult;
 
 import com.tgrznar.javalearningapp.module.CourseModule;
-import com.tgrznar.javalearningapp.user.User;
+import com.tgrznar.javalearningapp.user.model.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;

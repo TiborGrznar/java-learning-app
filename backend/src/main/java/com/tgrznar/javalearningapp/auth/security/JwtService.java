@@ -1,6 +1,6 @@
 package com.tgrznar.javalearningapp.auth.security;
 
-import com.tgrznar.javalearningapp.user.User;
+import com.tgrznar.javalearningapp.user.model.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.JwtParser;

@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.model;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;

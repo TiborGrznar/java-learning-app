@@ -23,4 +23,11 @@ public record JwtProperties(
         @NotNull
         Duration refreshTokenTtl
 ) {
+
+    /** The generated record version would print the signing key into logs and exception messages. */
+    @Override
+    public String toString() {
+        return "JwtProperties[secret=****, accessTokenTtl=" + accessTokenTtl
+                + ", refreshTokenTtl=" + refreshTokenTtl + "]";
+    }
 }

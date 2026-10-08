@@ -13,6 +13,14 @@ app:
     secret: ${JWT_SECRET}
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
+  admin:
+    # First administrator, created at startup only when no administrator exists yet.
+    # Both ADMIN_EMAIL and ADMIN_PASSWORD must be set together (password: min 12 characters).
+    # Remove ADMIN_PASSWORD from the environment after the first start.
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    name: ${ADMIN_NAME:}
+    surname: ${ADMIN_SURNAME:}
 
 ---
 spring:
