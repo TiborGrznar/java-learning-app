@@ -12,21 +12,37 @@ Work in progress.
 |------|-------|
 | Database schema (Flyway) and JPA entities | Done |
 | Authentication (JWT access token + rotating refresh token) | Done |
-| User, school and class management | Planned |
+| Administrator: school and user management | Done |
+| Teacher: student overview and deactivation of students | Planned |
+| Class management and student enrollment | Planned |
 | Quizzes, coding tasks, progress tracking | Planned |
 | Sandboxed execution of student code | Planned |
 | Frontend (React + TypeScript) | Not started |
 
 ## API
 
-All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires a valid access token in the `Authorization: Bearer <token>` header.
+All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires a valid access token in the `Authorization: Bearer <token>` header. The `Access` column shows who may call the endpoint.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/auth/register` | Creates a student account (`201`). The role is always `STUDENT` |
-| POST | `/auth/login` | Returns an access token (15 min) and a refresh token (7 days) |
-| POST | `/auth/refresh` | Exchanges a refresh token for a new token pair, the old refresh token is revoked |
-| POST | `/auth/logout` | Revokes the given refresh token (`204`) |
+| Method | Path | Access | Description |
+|--------|------|--------|-------------|
+| POST | `/auth/register` | public | Creates a student account (`201`). The role is always `STUDENT` |
+| POST | `/auth/login` | public | Returns an access token (15 min) and a refresh token (7 days) |
+| POST | `/auth/refresh` | public | Exchanges a refresh token for a new token pair, the old refresh token is revoked. A deactivated account is refused (`ACCOUNT_DISABLED`) |
+| POST | `/auth/logout` | public | Revokes the given refresh token (`204`) |
+| GET | `/users/me` | any signed-in user | Profile of the signed-in user |
+| POST | `/schools` | `ADMIN` | Creates a school (`201`). The name must be unique |
+| GET | `/schools` | `ADMIN` | Lists schools |
+| GET | `/schools/{id}` | `ADMIN` | Detail of a school |
+| PUT | `/schools/{id}` | `ADMIN` | Replaces the name and the address of a school |
+| PATCH | `/schools/{id}/active` | `ADMIN` | Deactivates or reactivates a school (schools are never deleted) |
+| POST | `/users` | `ADMIN` | Creates a teacher or an administrator (`201`). A teacher needs an active school. The response carries a generated temporary password, shown only once (`Cache-Control: no-store`) |
+| GET | `/users` | `ADMIN` | Page of users. Filters `schoolId`, `role`, `active`; paging `page` (from 0, default 0) and `size` (default 20, at most 100); sorted by surname, name, id |
+| GET | `/users/{id}` | `ADMIN` | Detail of a user |
+| PUT | `/users/{id}` | `ADMIN` | Replaces name, surname, e-mail and school. The role and the active flag have their own endpoints |
+| PATCH | `/users/{id}/role` | `ADMIN` | Changes the role. Changing to `TEACHER` needs a school |
+| PATCH | `/users/{id}/active` | `ADMIN` | Deactivates or reactivates an account. Deactivation also revokes all refresh tokens of the user |
+
+Rules of user management: an administrator cannot change their own role or deactivate themselves, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them. There is no password change yet, so the temporary password of a new teacher stays valid until that is implemented.
 
 Errors use a uniform JSON body. `code` is a stable identifier for client logic, `message` is a Slovak text for the user, `fieldErrors` is present only for validation errors:
 
@@ -37,6 +53,25 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
   "fieldErrors": { "email": "E-mail nemá platný formát" }
 }
 ```
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | `VALIDATION_ERROR` | A field is missing or invalid, details in `fieldErrors` |
+| 400 | `INVALID_REQUEST_BODY` | The body is not valid JSON or contains an unknown value (e.g. an unknown role) |
+| 400 | `PASSWORD_MISMATCH` | Password and its confirmation differ |
+| 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
+| 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired or revoked |
+| 401 | `INVALID_TOKEN` | The access token is malformed or expired |
+| 401 | `UNAUTHENTICATED` | No access token was sent |
+| 403 | `ACCOUNT_DISABLED` | The account is deactivated |
+| 403 | `ACCESS_DENIED` | The role of the user does not allow the operation |
+| 404 | `SCHOOL_NOT_FOUND` | The school does not exist |
+| 404 | `USER_NOT_FOUND` | The user does not exist |
+| 409 | `EMAIL_ALREADY_EXISTS` | The e-mail is already registered |
+| 409 | `SCHOOL_NAME_ALREADY_EXISTS` | A school with the same name exists |
+| 409 | `SCHOOL_INACTIVE` | The school is deactivated and cannot get new users |
+| 409 | `LAST_ADMIN` | The last active administrator cannot be removed |
+| 409 | `SELF_MODIFICATION_NOT_ALLOWED` | An administrator cannot change their own role or deactivate themselves |
 
 ## Tech stack
 
@@ -116,6 +151,10 @@ cd backend
 
 The tests need the database container and the environment variables from step 3 (including `JWT_SECRET`). The integration tests run against the local development database, every test is rolled back, so no data is left behind.
 
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) builds the backend and runs all tests on every push to any branch, on pull requests to `main` and on demand. The job uses a MySQL 8 service container with throwaway credentials and a `JWT_SECRET` generated for each run, so no repository secrets are needed. A newer run of the same branch or pull request cancels the older one, runs on `main` are never cancelled.
+
 ## First administrator
 
 Only an administrator can create teachers and other administrators, so the first one is created at startup from the environment:
@@ -139,6 +178,7 @@ Never put the real administrator password into shell commands or tools such as P
 
 ```
 .
+├── .github/workflows/    CI (GitHub Actions)
 ├── backend/              Spring Boot application
 │   └── src/
 │       ├── main/
@@ -148,28 +188,35 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   │   ├── exception/    authentication exceptions
 │       │   │   │   ├── security/     JWT service, filter, security config, 401/403 JSON handlers
 │       │   │   │   └── token/        refresh token entity, repository and service
-│       │   │   ├── common/       global exception handler and error body
-│       │   │   ├── user/         user entity, repository, profile endpoint
+│       │   │   ├── common/       global exception handler, error body, page response
+│       │   │   ├── user/
+│       │   │   │   ├── model/        user entity, role, repository
+│       │   │   │   ├── admin/        user management by an administrator
+│       │   │   │   ├── dto/          request and response records
+│       │   │   │   ├── exception/    user exceptions
 │       │   │   │   └── bootstrap/    creation of the first administrator at startup
-│       │   │   ├── school/ module/ quizquestion/ codingtask/
+│       │   │   ├── school/       school entity, repository, service, controller
+│       │   │   │   ├── dto/
+│       │   │   │   └── exception/
+│       │   │   ├── module/ quizquestion/ codingtask/
 │       │   │   └── quizresult/ codingresult/ userprogress/
 │       │   └── resources/
 │       │       ├── application.yaml
 │       │       └── db/migration/ Flyway migrations (V1, V2, ...)
-│       └── test/             unit and integration tests, same package layout
+│       └── test/             unit and integration tests
 ├── docker-compose.yml    local MySQL
 └── .env.example          template of required environment variables
 ```
 
-Each domain package contains its JPA entity and Spring Data repository.
+Tests lie in the package of the tested class (they need package-private access in some cases). The API integration tests of a feature are in an `api` subpackage, one class per operation, with a shared abstract test support class.
 
 ## Database migrations
 
-Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V3__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag.
+Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V4__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag.
 
 ## Development workflow
 
 - GitHub Flow: feature branch, pull request, squash and merge into `main`, delete the branch.
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `refactor:`, `test:`, `docs:`).
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `refactor:`, `test:`, `docs:`, `ci:`).
 - Dependency and build changes are committed separately from feature code.
 - Files are staged by explicit path, not with `git add .`.
