@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.admin;
 
 import org.junit.jupiter.api.Test;
 

@@ -2,7 +2,7 @@ package com.tgrznar.javalearningapp.auth.token;
 
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.security.JwtProperties;
-import com.tgrznar.javalearningapp.user.User;
+import com.tgrznar.javalearningapp.user.model.User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +73,12 @@ public class RefreshTokenService {
     public void revoke(String rawToken) {
         repository.findByTokenHash(hash(rawToken))
                 .ifPresent(token -> token.setRevoked(true));
+    }
+
+    /** Revokes every refresh token of the user, used when the account is deactivated. */
+    @Transactional
+    public void revokeAllForUser(Long userId) {
+        repository.revokeAllByUserId(userId);
     }
 
     private String generateRawToken() {

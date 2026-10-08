@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.school;
+package com.tgrznar.javalearningapp.school.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

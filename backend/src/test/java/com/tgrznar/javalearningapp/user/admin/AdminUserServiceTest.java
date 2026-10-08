@@ -1,10 +1,16 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.admin;
 
 import com.tgrznar.javalearningapp.auth.exception.EmailAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.School;
-import com.tgrznar.javalearningapp.school.SchoolInactiveException;
-import com.tgrznar.javalearningapp.school.SchoolNotFoundException;
+import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
+import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
+import com.tgrznar.javalearningapp.user.dto.CreateUserRequest;
+import com.tgrznar.javalearningapp.user.dto.CreatedUserResponse;
+import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
+import com.tgrznar.javalearningapp.user.model.User;
+import com.tgrznar.javalearningapp.user.model.UserRepository;
+import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -25,7 +31,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class UserAdminServiceTest {
+class AdminUserServiceTest {
 
     private static final Long ADMIN_ID = 99L;
     private static final String TEMP_PASSWORD = "TempPass12345678";
@@ -43,7 +49,7 @@ class UserAdminServiceTest {
     private TemporaryPasswordGenerator passwordGenerator;
 
     @InjectMocks
-    private UserAdminService service;
+    private AdminUserService service;
 
     @Test
     void createTeacher_storesHashAndReturnsTemporaryPasswordOnce() {

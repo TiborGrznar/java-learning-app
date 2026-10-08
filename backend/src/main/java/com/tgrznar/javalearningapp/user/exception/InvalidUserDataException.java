@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.exception;
 
 /** A business rule on a single form field was violated; the message is Slovak text for the user. */
 public class InvalidUserDataException extends RuntimeException {

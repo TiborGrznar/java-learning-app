@@ -1,9 +1,12 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.admin;
 
 import com.jayway.jsonpath.JsonPath;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
+import com.tgrznar.javalearningapp.user.model.User;
+import com.tgrznar.javalearningapp.user.model.UserRepository;
+import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

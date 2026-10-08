@@ -1,5 +1,9 @@
 package com.tgrznar.javalearningapp.school;
 
+import com.tgrznar.javalearningapp.school.dto.SchoolRequest;
+import com.tgrznar.javalearningapp.school.dto.SchoolResponse;
+import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
+import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;

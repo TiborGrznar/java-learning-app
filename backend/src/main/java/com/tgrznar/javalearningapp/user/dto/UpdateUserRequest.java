@@ -1,12 +1,11 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-/** Payload for an administrator creating a teacher or another administrator (UC-04). */
-public record CreateUserRequest(
+/** Full replacement of the editable profile fields of a user (PUT). A null schoolId removes the school. */
+public record UpdateUserRequest(
 
         @NotBlank(message = "Meno je povinné")
         @Size(max = 100, message = "Meno môže mať najviac 100 znakov")
@@ -21,10 +20,7 @@ public record CreateUserRequest(
         @Size(max = 255, message = "E-mail môže mať najviac 255 znakov")
         String email,
 
-        @NotNull(message = "Rola je povinná")
-        UserRole role,
-
-        /** Required for a teacher, optional for an administrator. */
+        /** Required for a teacher. */
         Long schoolId
 ) {
 }

@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.dto;
 
 /**
  * Result of creating a user. The temporary password is returned exactly once and is never

@@ -1,5 +1,6 @@
 package com.tgrznar.javalearningapp.user;
 
+import com.tgrznar.javalearningapp.user.dto.UserResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

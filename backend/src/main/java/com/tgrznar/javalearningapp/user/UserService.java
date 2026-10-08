@@ -2,6 +2,9 @@ package com.tgrznar.javalearningapp.user;
 
 import com.tgrznar.javalearningapp.auth.exception.AccountDisabledException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
+import com.tgrznar.javalearningapp.user.dto.UserResponse;
+import com.tgrznar.javalearningapp.user.model.User;
+import com.tgrznar.javalearningapp.user.model.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

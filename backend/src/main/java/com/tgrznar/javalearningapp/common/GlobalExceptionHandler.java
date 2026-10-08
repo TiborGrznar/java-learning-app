@@ -6,10 +6,13 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
-import com.tgrznar.javalearningapp.school.SchoolNameAlreadyExistsException;
-import com.tgrznar.javalearningapp.school.SchoolNotFoundException;
-import com.tgrznar.javalearningapp.school.SchoolInactiveException;
-import com.tgrznar.javalearningapp.user.InvalidUserDataException;
+import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
+import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
+import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
+import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
+import com.tgrznar.javalearningapp.user.exception.LastAdminException;
+import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
+import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -26,20 +29,23 @@ import java.util.Map;
  * <p>
  * Frontend contract: the client decides by {@code code}, never by the message text.
  * <pre>
- * code                        status  meaning / expected frontend reaction
- * VALIDATION_ERROR            400     invalid form input, show fieldErrors next to the fields
- * INVALID_REQUEST_BODY        400     unreadable JSON, a client bug, not shown to the user
- * PASSWORD_MISMATCH           400     password and confirmation differ, show in the form
- * INVALID_CREDENTIALS         401     wrong e-mail or password (indistinguishable on purpose)
- * INVALID_REFRESH_TOKEN       401     session expired, drop tokens and redirect to login
- * INVALID_TOKEN               401     access token refers to a missing user, drop tokens, redirect to login
- * UNAUTHENTICATED             401     access token missing, invalid or expired, try /refresh once, then redirect to login
- * ACCOUNT_DISABLED            403     account deactivated, show a message, no retry
- * ACCESS_DENIED               403     logged in but lacking the role, show a message, keep the tokens
- * SCHOOL_NOT_FOUND            404     school with the given id does not exist, show a message
- * EMAIL_ALREADY_EXISTS        409     e-mail is taken, show in the registration form
- * SCHOOL_NAME_ALREADY_EXISTS  409     school name is taken, show in the school form
- * SCHOOL_INACTIVE             409     school is deactivated, ask the admin to choose another one
+ * code                           status  meaning / expected frontend reaction
+ * VALIDATION_ERROR               400     invalid form input, show fieldErrors next to the fields
+ * INVALID_REQUEST_BODY           400     unreadable JSON, a client bug, not shown to the user
+ * PASSWORD_MISMATCH              400     password and confirmation differ, show in the form
+ * INVALID_CREDENTIALS            401     wrong e-mail or password (indistinguishable on purpose)
+ * INVALID_REFRESH_TOKEN          401     session expired, drop tokens and redirect to login
+ * INVALID_TOKEN                  401     access token refers to a missing user, drop tokens, redirect to login
+ * UNAUTHENTICATED                401     access token missing, invalid or expired, try /refresh once, then redirect to login
+ * ACCOUNT_DISABLED               403     account deactivated, show a message, no retry
+ * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
+ * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message
+ * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
+ * EMAIL_ALREADY_EXISTS           409     e-mail is taken, show in the registration or user form
+ * SCHOOL_NAME_ALREADY_EXISTS     409     school name is taken, show in the school form
+ * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
+ * LAST_ADMIN                     409     the last active administrator cannot be deactivated or demoted, show a message
+ * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role or deactivate self, show a message
  * </pre>
  * <p>
  * UNAUTHENTICATED and ACCESS_DENIED are produced by the security filter chain, not by this class:
@@ -135,5 +141,27 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleSchoolInactive() {
         return ErrorResponse.of("SCHOOL_INACTIVE", "Škola je neaktívna");
+    }
+
+    /** 404 USER_NOT_FOUND: no user with the requested id. */
+    @ExceptionHandler(UserNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleUserNotFound() {
+        return ErrorResponse.of("USER_NOT_FOUND", "Používateľ neexistuje");
+    }
+
+    /** 409 LAST_ADMIN: the change would leave the system without an active administrator. */
+    @ExceptionHandler(LastAdminException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleLastAdmin() {
+        return ErrorResponse.of("LAST_ADMIN", "Nemožno odobrať posledného aktívneho administrátora");
+    }
+
+    /** 409 SELF_MODIFICATION_NOT_ALLOWED: an administrator tried to change own role or deactivate self. */
+    @ExceptionHandler(SelfModificationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleSelfModification() {
+        return ErrorResponse.of("SELF_MODIFICATION_NOT_ALLOWED",
+                "Nemôžete zmeniť vlastnú rolu ani deaktivovať vlastný účet");
     }
 }

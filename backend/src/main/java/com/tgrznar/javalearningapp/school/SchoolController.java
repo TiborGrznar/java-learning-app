@@ -1,5 +1,8 @@
 package com.tgrznar.javalearningapp.school;
 
+import com.tgrznar.javalearningapp.school.dto.SchoolActiveRequest;
+import com.tgrznar.javalearningapp.school.dto.SchoolRequest;
+import com.tgrznar.javalearningapp.school.dto.SchoolResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;

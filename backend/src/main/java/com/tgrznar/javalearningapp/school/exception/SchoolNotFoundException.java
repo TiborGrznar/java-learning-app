@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.school;
+package com.tgrznar.javalearningapp.school.exception;
 
 public class SchoolNotFoundException extends RuntimeException {
 

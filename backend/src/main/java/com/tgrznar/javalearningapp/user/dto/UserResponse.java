@@ -1,4 +1,7 @@
-package com.tgrznar.javalearningapp.user;
+package com.tgrznar.javalearningapp.user.dto;
+
+import com.tgrznar.javalearningapp.user.model.User;
+import com.tgrznar.javalearningapp.user.model.UserRole;
 
 import java.time.Instant;
 

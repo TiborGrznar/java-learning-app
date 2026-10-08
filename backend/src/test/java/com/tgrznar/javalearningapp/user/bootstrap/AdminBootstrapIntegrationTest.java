@@ -1,8 +1,8 @@
 package com.tgrznar.javalearningapp.user.bootstrap;
 
-import com.tgrznar.javalearningapp.user.User;
-import com.tgrznar.javalearningapp.user.UserRepository;
-import com.tgrznar.javalearningapp.user.UserRole;
+import com.tgrznar.javalearningapp.user.model.User;
+import com.tgrznar.javalearningapp.user.model.UserRepository;
+import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

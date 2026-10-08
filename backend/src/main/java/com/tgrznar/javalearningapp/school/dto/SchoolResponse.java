@@ -1,4 +1,6 @@
-package com.tgrznar.javalearningapp.school;
+package com.tgrznar.javalearningapp.school.dto;
+
+import com.tgrznar.javalearningapp.school.School;
 
 import java.time.Instant;
 
