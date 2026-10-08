@@ -8,6 +8,8 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.school.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.SchoolNotFoundException;
+import com.tgrznar.javalearningapp.school.SchoolInactiveException;
+import com.tgrznar.javalearningapp.user.InvalidUserDataException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -37,6 +39,7 @@ import java.util.Map;
  * SCHOOL_NOT_FOUND            404     school with the given id does not exist, show a message
  * EMAIL_ALREADY_EXISTS        409     e-mail is taken, show in the registration form
  * SCHOOL_NAME_ALREADY_EXISTS  409     school name is taken, show in the school form
+ * SCHOOL_INACTIVE             409     school is deactivated, ask the admin to choose another one
  * </pre>
  * <p>
  * UNAUTHENTICATED and ACCESS_DENIED are produced by the security filter chain, not by this class:
@@ -117,5 +120,20 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleSchoolNameExists() {
         return ErrorResponse.of("SCHOOL_NAME_ALREADY_EXISTS", "Škola s týmto názvom už existuje");
+    }
+
+    /** 400 VALIDATION_ERROR: a business rule on one form field (e.g. teacher without a school). */
+    @ExceptionHandler(InvalidUserDataException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInvalidUserData(InvalidUserDataException ex) {
+        return new ErrorResponse("VALIDATION_ERROR", "Formulár obsahuje chyby",
+                Map.of(ex.getField(), ex.getMessage()));
+    }
+
+    /** 409 SCHOOL_INACTIVE: the chosen school is deactivated and cannot get new users. */
+    @ExceptionHandler(SchoolInactiveException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleSchoolInactive() {
+        return ErrorResponse.of("SCHOOL_INACTIVE", "Škola je neaktívna");
     }
 }
