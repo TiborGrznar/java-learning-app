@@ -61,10 +61,10 @@ public class AdminQuestionService {
     public QuestionResponse update(Long moduleId, Long id, QuestionRequest request, Long adminId) {
         QuizQuestion question = findOrThrow(moduleId, id);
         apply(question, request);
-        questionRepository.flush();
 
-        log.info("Administrator {} updated question {} in module {}", adminId, id, moduleId);
-        return QuestionResponse.from(question);
+        QuizQuestion saved = questionRepository.saveAndFlush(question);
+        log.info("Question updated: id={}, moduleId={}, updatedByAdminId={}", id, moduleId, adminId);
+        return QuestionResponse.from(saved);
     }
 
     @Transactional
