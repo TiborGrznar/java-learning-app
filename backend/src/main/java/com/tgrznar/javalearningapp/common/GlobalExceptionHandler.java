@@ -7,6 +7,7 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
+import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
@@ -43,6 +44,7 @@ import java.util.Map;
  * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message
  * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
  * MODULE_NOT_FOUND               404     module with the given id does not exist, show a message
+ * QUESTION_NOT_FOUND             404     question does not exist in the given module, show a message
  * EMAIL_ALREADY_EXISTS           409     e-mail is taken, show in the registration or user form
  * SCHOOL_NAME_ALREADY_EXISTS     409     school name is taken, show in the school form
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
@@ -157,6 +159,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ErrorResponse handleModuleNotFound() {
         return ErrorResponse.of("MODULE_NOT_FOUND", "Modul neexistuje");
+    }
+
+    /** 404 QUESTION_NOT_FOUND: no question with the requested id in the requested module. */
+    @ExceptionHandler(QuestionNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleQuestionNotFound() {
+        return ErrorResponse.of("QUESTION_NOT_FOUND", "Otázka neexistuje");
     }
 
     /** 409 LAST_ADMIN: the change would leave the system without an active administrator. */
