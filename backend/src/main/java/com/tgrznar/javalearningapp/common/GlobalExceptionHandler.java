@@ -6,6 +6,7 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
@@ -41,6 +42,7 @@ import java.util.Map;
  * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
  * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message
  * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
+ * MODULE_NOT_FOUND               404     module with the given id does not exist, show a message
  * EMAIL_ALREADY_EXISTS           409     e-mail is taken, show in the registration or user form
  * SCHOOL_NAME_ALREADY_EXISTS     409     school name is taken, show in the school form
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
@@ -148,6 +150,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ErrorResponse handleUserNotFound() {
         return ErrorResponse.of("USER_NOT_FOUND", "Používateľ neexistuje");
+    }
+
+    /** 404 MODULE_NOT_FOUND: no module with the requested id. */
+    @ExceptionHandler(ModuleNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleModuleNotFound() {
+        return ErrorResponse.of("MODULE_NOT_FOUND", "Modul neexistuje");
     }
 
     /** 409 LAST_ADMIN: the change would leave the system without an active administrator. */
