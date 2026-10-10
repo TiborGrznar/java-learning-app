@@ -33,6 +33,7 @@ public class AdminModuleService {
         CourseModule module = new CourseModule();
         apply(module, request);
 
+        // Flush now so the id and createdAt are set and a database error surfaces here.
         CourseModule saved = moduleRepository.saveAndFlush(module);
         log.info("Module created: id={}, createdByAdminId={}", saved.getId(), adminId);
         return ModuleResponse.from(saved);
@@ -76,6 +77,7 @@ public class AdminModuleService {
         return moduleRepository.findById(id).orElseThrow(() -> new ModuleNotFoundException(id));
     }
 
+    /** Copies the request into the entity. Never touches id, active or createdAt. */
     private static void apply(CourseModule module, ModuleRequest request) {
         module.setTitle(request.title().trim());
         module.setDescription(trimToNull(request.description()));
