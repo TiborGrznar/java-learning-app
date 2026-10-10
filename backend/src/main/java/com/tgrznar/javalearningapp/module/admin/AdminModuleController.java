@@ -5,6 +5,7 @@ import com.tgrznar.javalearningapp.module.dto.ModuleRequest;
 import com.tgrznar.javalearningapp.module.dto.ModuleResponse;
 import com.tgrznar.javalearningapp.module.dto.ModuleSummary;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,13 +25,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/modules")
 @PreAuthorize("hasRole('ADMIN')")
+@RequiredArgsConstructor
 public class AdminModuleController {
 
     private final AdminModuleService adminModuleService;
-
-    public AdminModuleController(AdminModuleService adminModuleService) {
-        this.adminModuleService = adminModuleService;
-    }
 
     @PostMapping
     public ResponseEntity<ModuleResponse> create(@Valid @RequestBody ModuleRequest request,

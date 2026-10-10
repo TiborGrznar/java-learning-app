@@ -6,8 +6,8 @@ import com.tgrznar.javalearningapp.module.dto.ModuleRequest;
 import com.tgrznar.javalearningapp.module.dto.ModuleResponse;
 import com.tgrznar.javalearningapp.module.dto.ModuleSummary;
 import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,18 +15,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /** Module management by an administrator. Modules are never deleted, only deactivated. */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class AdminModuleService {
-
-    private static final Logger log = LoggerFactory.getLogger(AdminModuleService.class);
 
     private static final Sort LIST_ORDER = Sort.by("orderNumber", "id");
 
     private final CourseModuleRepository moduleRepository;
-
-    public AdminModuleService(CourseModuleRepository moduleRepository) {
-        this.moduleRepository = moduleRepository;
-    }
 
     @Transactional
     public ModuleResponse create(ModuleRequest request, Long adminId) {

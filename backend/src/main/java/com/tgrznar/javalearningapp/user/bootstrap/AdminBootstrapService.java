@@ -3,8 +3,8 @@ package com.tgrznar.javalearningapp.user.bootstrap;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -25,12 +25,13 @@ import java.util.regex.Pattern;
  * Deliberately not @Transactional: a duplicate-key error caught inside a transaction would
  * mark it rollback-only. The repository calls run in their own transactions instead.
  */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class AdminBootstrapService {
 
-    private static final Logger log = LoggerFactory.getLogger(AdminBootstrapService.class);
-
     static final int MIN_PASSWORD_LENGTH = 12;
+
     // BCrypt ignores everything beyond 72 bytes (bytes, not characters).
     static final int MAX_PASSWORD_BYTES = 72;
     private static final int MAX_EMAIL_LENGTH = 255;
@@ -40,14 +41,6 @@ public class AdminBootstrapService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AdminProperties properties;
-
-    public AdminBootstrapService(UserRepository userRepository,
-                                 PasswordEncoder passwordEncoder,
-                                 AdminProperties properties) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.properties = properties;
-    }
 
     /**
      * @return true if an administrator was created, false if nothing had to be done

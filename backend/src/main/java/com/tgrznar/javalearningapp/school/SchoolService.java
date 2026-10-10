@@ -4,24 +4,20 @@ import com.tgrznar.javalearningapp.school.dto.SchoolRequest;
 import com.tgrznar.javalearningapp.school.dto.SchoolResponse;
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class SchoolService {
 
-    private static final Logger log = LoggerFactory.getLogger(SchoolService.class);
-
     private final SchoolRepository schoolRepository;
-
-    public SchoolService(SchoolRepository schoolRepository) {
-        this.schoolRepository = schoolRepository;
-    }
 
     @Transactional
     public SchoolResponse create(SchoolRequest request, Long adminId) {

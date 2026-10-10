@@ -3,6 +3,7 @@ package com.tgrznar.javalearningapp.auth.token;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.security.JwtProperties;
 import com.tgrznar.javalearningapp.user.model.User;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ import java.util.HexFormat;
  * The raw token is returned to the client once; only its SHA-256 hash is stored.
  */
 @Service
+@RequiredArgsConstructor
 public class RefreshTokenService {
 
     private static final int TOKEN_BYTES = 32; // 256 bits of entropy
@@ -26,11 +28,6 @@ public class RefreshTokenService {
     private final SecureRandom secureRandom = new SecureRandom();
     private final RefreshTokenRepository repository;
     private final JwtProperties properties;
-
-    public RefreshTokenService(RefreshTokenRepository repository, JwtProperties properties) {
-        this.repository = repository;
-        this.properties = properties;
-    }
 
     /** Result of a successful rotation: the owner of the old token and the newly issued raw token. */
     public record RotatedToken(User user, String refreshToken) {

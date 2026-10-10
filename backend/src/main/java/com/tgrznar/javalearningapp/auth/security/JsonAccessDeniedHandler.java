@@ -3,6 +3,7 @@ package com.tgrznar.javalearningapp.auth.security;
 import com.tgrznar.javalearningapp.common.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -19,13 +20,10 @@ import java.io.IOException;
  * The required role is deliberately not mentioned in the response.
  */
 @Component
+@RequiredArgsConstructor
 public class JsonAccessDeniedHandler implements AccessDeniedHandler {
 
     private final ObjectMapper objectMapper;
-
-    public JsonAccessDeniedHandler(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     @Override
     public void handle(HttpServletRequest request,

@@ -4,6 +4,7 @@ import com.tgrznar.javalearningapp.common.PageResponse;
 import com.tgrznar.javalearningapp.user.dto.*;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,14 +25,10 @@ import java.net.URI;
 @RestController
 @RequestMapping("/api/v1/users")
 @PreAuthorize("hasRole('ADMIN')")
+@RequiredArgsConstructor
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
-
-    public AdminUserController(AdminUserService adminUserService) {
-        this.adminUserService = adminUserService;
-    }
-
     @PostMapping
     public ResponseEntity<CreatedUserResponse> create(@Valid @RequestBody CreateUserRequest request,
                                                       @AuthenticationPrincipal Long adminId) {
