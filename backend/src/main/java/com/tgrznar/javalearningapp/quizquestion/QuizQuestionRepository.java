@@ -14,4 +14,6 @@ public interface QuizQuestionRepository extends JpaRepository<QuizQuestion, Long
 
     /** Scoping by module makes a question reached through another module's URL look like "not found". */
     Optional<QuizQuestion> findByIdAndModuleId(Long id, Long moduleId);
+
+    long countByModuleId(Long moduleId);
 }
