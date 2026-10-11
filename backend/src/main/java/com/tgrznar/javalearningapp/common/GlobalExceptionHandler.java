@@ -7,6 +7,11 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.learning.exception.ModuleLockedException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizTokenException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizAnswersException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.QuizNotAvailableException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.QuizOutdatedException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.TheoryNotCompletedException;
 import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
 import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
@@ -36,6 +41,7 @@ import java.util.Map;
  * VALIDATION_ERROR               400     invalid form input, show fieldErrors next to the fields
  * INVALID_REQUEST_BODY           400     unreadable JSON, a client bug, not shown to the user
  * PASSWORD_MISMATCH              400     password and confirmation differ, show in the form
+ * INVALID_QUIZ_TOKEN             400     quiz token is not valid for this student and module, reload the quiz
  * INVALID_CREDENTIALS            401     wrong e-mail or password (indistinguishable on purpose)
  * INVALID_REFRESH_TOKEN          401     session expired, drop tokens and redirect to login
  * INVALID_TOKEN                  401     access token refers to a missing user, drop tokens, redirect to login
@@ -52,6 +58,9 @@ import java.util.Map;
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
  * LAST_ADMIN                     409     the last active administrator cannot be deactivated or demoted, show a message
  * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role or deactivate self, show a message
+ * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
+ * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
+ * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
  * </pre>
  * <p>
  * UNAUTHENTICATED and ACCESS_DENIED are produced by the security filter chain, not by this class:
@@ -175,6 +184,42 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleModuleLocked() {
         return ErrorResponse.of("MODULE_LOCKED", "Modul je zamknutý. Najprv úspešne dokončite kvíz v predchádzajúcom module");
+    }
+
+    /** 409 THEORY_NOT_COMPLETED: the quiz needs the module's theory to be marked as read first. */
+    @ExceptionHandler(TheoryNotCompletedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleTheoryNotCompleted() {
+        return ErrorResponse.of("THEORY_NOT_COMPLETED", "Najprv si prečítajte teóriu modulu");
+    }
+
+    /** 409 QUIZ_NOT_AVAILABLE: the module has no quiz questions. */
+    @ExceptionHandler(QuizNotAvailableException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleQuizNotAvailable() {
+        return ErrorResponse.of("QUIZ_NOT_AVAILABLE", "Kvíz nie je dostupný");
+    }
+
+    /** 409 QUIZ_OUTDATED: the quiz token expired or one of its questions no longer exists. */
+    @ExceptionHandler(QuizOutdatedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleQuizOutdated() {
+        return ErrorResponse.of("QUIZ_OUTDATED", "Kvíz sa zmenil alebo vypršal, načítajte ho znova");
+    }
+
+    /** 400 INVALID_QUIZ_TOKEN: the quiz token is malformed, tampered with, or issued for someone else. */
+    @ExceptionHandler(InvalidQuizTokenException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInvalidQuizToken() {
+        return ErrorResponse.of("INVALID_QUIZ_TOKEN", "Neplatný kvíz, načítajte ho znova");
+    }
+
+    /** 400 VALIDATION_ERROR: the submitted answers do not match the questions in the quiz token. */
+    @ExceptionHandler(InvalidQuizAnswersException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInvalidQuizAnswers() {
+        return new ErrorResponse("VALIDATION_ERROR", "Formulár obsahuje chyby",
+                Map.of("answers", "Odpovede nezodpovedajú otázkam kvízu"));
     }
 
     /** 409 LAST_ADMIN: the change would leave the system without an active administrator. */

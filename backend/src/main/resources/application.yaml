@@ -13,6 +13,13 @@ app:
     secret: ${JWT_SECRET}
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
+  quiz:
+    # Share of correct answers (in percent) needed to pass a quiz.
+    pass-threshold-percent: ${QUIZ_PASS_THRESHOLD_PERCENT:70}
+    # Number of questions drawn from a module's question bank for one attempt.
+    questions-per-attempt: ${QUIZ_QUESTIONS_PER_ATTEMPT:10}
+    # How long a loaded quiz can be submitted before it has to be loaded again.
+    token-ttl: ${QUIZ_TOKEN_TTL:2h}
   admin:
     # First administrator, created at startup only when no administrator exists yet.
     # Both ADMIN_EMAIL and ADMIN_PASSWORD must be set together (password: min 12 characters).

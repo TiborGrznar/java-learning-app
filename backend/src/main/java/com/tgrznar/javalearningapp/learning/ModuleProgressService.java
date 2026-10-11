@@ -25,17 +25,9 @@ public class ModuleProgressService {
     /** Idempotent: marking a theory that is already marked changes nothing. */
     public void markTheoryCompleted(Long userId, Long moduleId) {
         ModuleAccessService.ModuleAccess access = accessService.requireUnlocked(userId, moduleId);
-        UserProgress progress = access.progress();
-
-        if (progress == null) {
-            try {
-                progressRepository.saveAndFlush(newProgress(userId, access.module()));
-                return;
-            } catch (DataIntegrityViolationException e) {
-                // A concurrent request created the row between the check and the insert: update that one.
-                progress = progressRepository.findByUserIdAndModuleId(userId, moduleId).orElseThrow(() -> e);
-            }
-        }
+        UserProgress progress = access.progress() != null
+                ? access.progress()
+                : createOrLoad(userId, access.module(), true);
 
         if (!progress.isTheoryCompleted()) {
             progress.setTheoryCompleted(true);
@@ -43,11 +35,29 @@ public class ModuleProgressService {
         }
     }
 
-    private UserProgress newProgress(Long userId, CourseModule module) {
+    /** The student's progress row in the module. An empty one is created when the student has none yet. */
+    public UserProgress ensureProgress(Long userId, ModuleAccessService.ModuleAccess access) {
+        return access.progress() != null
+                ? access.progress()
+                : createOrLoad(userId, access.module(), false);
+    }
+
+    private UserProgress createOrLoad(Long userId, CourseModule module, boolean theoryCompleted) {
+        UserProgress created = newProgress(userId, module, theoryCompleted);
+        try {
+            progressRepository.saveAndFlush(created);
+            return created;
+        } catch (DataIntegrityViolationException e) {
+            // A concurrent request created the row between the check and the insert: use that one.
+            return progressRepository.findByUserIdAndModuleId(userId, module.getId()).orElseThrow(() -> e);
+        }
+    }
+
+    private UserProgress newProgress(Long userId, CourseModule module, boolean theoryCompleted) {
         UserProgress progress = new UserProgress();
         progress.setUser(userRepository.getReferenceById(userId));
         progress.setModule(module);
-        progress.setTheoryCompleted(true);
+        progress.setTheoryCompleted(theoryCompleted);
         return progress;
     }
 }
