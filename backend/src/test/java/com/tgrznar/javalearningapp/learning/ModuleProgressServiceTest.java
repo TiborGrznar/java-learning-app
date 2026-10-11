@@ -140,6 +140,50 @@ class ModuleProgressServiceTest {
         verifyNoInteractions(progressRepository, userRepository);
     }
 
+    @Test
+    void ensureProgress_existingProgress_isReturnedAsIs() {
+        UserProgress existing = progress(false, true, false);
+
+        UserProgress result = service.ensureProgress(USER_ID,
+                new ModuleAccessService.ModuleAccess(module(), existing, false));
+
+        assertThat(result).isSameAs(existing);
+        verifyNoInteractions(progressRepository, userRepository);
+    }
+
+    @Test
+    void ensureProgress_withoutProgress_createsAnEmptyRow() {
+        CourseModule module = module();
+        User user = new User();
+        when(userRepository.getReferenceById(USER_ID)).thenReturn(user);
+
+        UserProgress result = service.ensureProgress(USER_ID,
+                new ModuleAccessService.ModuleAccess(module, null, false));
+
+        ArgumentCaptor<UserProgress> captor = ArgumentCaptor.forClass(UserProgress.class);
+        verify(progressRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue()).isSameAs(result);
+        assertThat(result.getUser()).isSameAs(user);
+        assertThat(result.getModule()).isSameAs(module);
+        assertThat(result.isTheoryCompleted()).isFalse();
+        assertThat(result.isQuizCompleted()).isFalse();
+        assertThat(result.isCodingCompleted()).isFalse();
+    }
+
+    @Test
+    void ensureProgress_rowCreatedByConcurrentRequest_returnsThatRow() {
+        UserProgress concurrent = progress(true, false, false);
+        when(userRepository.getReferenceById(USER_ID)).thenReturn(new User());
+        when(progressRepository.saveAndFlush(any(UserProgress.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate"));
+        when(progressRepository.findByUserIdAndModuleId(USER_ID, MODULE_ID)).thenReturn(Optional.of(concurrent));
+
+        UserProgress result = service.ensureProgress(USER_ID,
+                new ModuleAccessService.ModuleAccess(module(), null, false));
+
+        assertThat(result).isSameAs(concurrent);
+    }
+
     private static CourseModule module() {
         CourseModule module = new CourseModule();
         module.setId(MODULE_ID);
