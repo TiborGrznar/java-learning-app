@@ -6,6 +6,7 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.learning.exception.ModuleLockedException;
 import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
 import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
@@ -41,6 +42,7 @@ import java.util.Map;
  * UNAUTHENTICATED                401     access token missing, invalid or expired, try /refresh once, then redirect to login
  * ACCOUNT_DISABLED               403     account deactivated, show a message, no retry
  * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
+ * MODULE_LOCKED                  403     module is locked until the previous module's quiz is passed, show it as locked, no retry
  * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message
  * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
  * MODULE_NOT_FOUND               404     module with the given id does not exist, show a message
@@ -166,6 +168,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ErrorResponse handleQuestionNotFound() {
         return ErrorResponse.of("QUESTION_NOT_FOUND", "Otázka neexistuje");
+    }
+
+    /** 403 MODULE_LOCKED: the student has not passed the quiz of the previous module yet. */
+    @ExceptionHandler(ModuleLockedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleModuleLocked() {
+        return ErrorResponse.of("MODULE_LOCKED", "Modul je zamknutý. Najprv úspešne dokončite kvíz v predchádzajúcom module");
     }
 
     /** 409 LAST_ADMIN: the change would leave the system without an active administrator. */
