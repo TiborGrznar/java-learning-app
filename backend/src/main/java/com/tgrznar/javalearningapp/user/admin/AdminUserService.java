@@ -15,8 +15,8 @@ import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -28,10 +28,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Locale;
 
 /** User management by an administrator (UC-04). */
+/** User management by an administrator (UC-04). */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class AdminUserService {
-
-    private static final Logger log = LoggerFactory.getLogger(AdminUserService.class);
 
     static final int DEFAULT_PAGE_SIZE = 20;
     static final int MAX_PAGE_SIZE = 100;
@@ -42,17 +43,6 @@ public class AdminUserService {
     private final TemporaryPasswordGenerator passwordGenerator;
     private final RefreshTokenService refreshTokenService;
 
-    public AdminUserService(UserRepository userRepository,
-                            SchoolRepository schoolRepository,
-                            PasswordEncoder passwordEncoder,
-                            TemporaryPasswordGenerator passwordGenerator,
-                            RefreshTokenService refreshTokenService) {
-        this.userRepository = userRepository;
-        this.schoolRepository = schoolRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.passwordGenerator = passwordGenerator;
-        this.refreshTokenService = refreshTokenService;
-    }
 
     /** Creates a teacher or an administrator with a generated temporary password. */
     @Transactional

@@ -1,5 +1,6 @@
 package com.tgrznar.javalearningapp.user.bootstrap;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -11,13 +12,10 @@ import org.springframework.stereotype.Component;
  * An exception thrown here stops the application with a failed startup.
  */
 @Component
+@RequiredArgsConstructor
 public class AdminBootstrapRunner implements ApplicationRunner {
 
     private final AdminBootstrapService adminBootstrapService;
-
-    public AdminBootstrapRunner(AdminBootstrapService adminBootstrapService) {
-        this.adminBootstrapService = adminBootstrapService;
-    }
 
     @Override
     public void run(ApplicationArguments args) {

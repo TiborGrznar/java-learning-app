@@ -5,6 +5,7 @@ import com.tgrznar.javalearningapp.auth.dto.LoginRequest;
 import com.tgrznar.javalearningapp.auth.dto.RefreshRequest;
 import com.tgrznar.javalearningapp.auth.dto.RegisterRequest;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,13 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 /** Public authentication endpoints (see SecurityConfig, /api/v1/auth/** is permitted). */
 @RestController
 @RequestMapping("/api/v1/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
     private final AuthService authService;
-
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
 
     /** UC-02: creates a student account. The user then logs in separately. */
     @PostMapping("/register")
