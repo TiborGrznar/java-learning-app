@@ -7,9 +7,11 @@ import com.tgrznar.javalearningapp.learning.exception.ModuleLockedException;
 import com.tgrznar.javalearningapp.module.CourseModule;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestionRepository;
 import com.tgrznar.javalearningapp.userprogress.UserProgress;
+import com.tgrznar.javalearningapp.learning.quiz.QuizProperties;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import java.time.Duration;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,8 +33,13 @@ class StudentModuleServiceTest {
     @Mock
     private QuizQuestionRepository questionRepository;
 
-    @InjectMocks
     private StudentModuleService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new StudentModuleService(accessService, questionRepository,
+                new QuizProperties(70, 10, Duration.ofHours(2)));
+    }
 
     // ---------- list ----------
 
@@ -101,6 +108,15 @@ class StudentModuleServiceTest {
     }
 
     // ---------- helpers ----------
+
+    @Test
+    void get_capsTheQuestionCountAtTheQuizSize() {
+        when(accessService.requireUnlocked(USER_ID, 1L))
+                .thenReturn(new ModuleAccessService.ModuleAccess(module(1L), null, false));
+        when(questionRepository.countByModuleId(1L)).thenReturn(25L);
+
+        assertThat(service.get(USER_ID, 1L).quizQuestionCount()).isEqualTo(10L);
+    }
 
     private static CourseModule module(Long id) {
         CourseModule module = new CourseModule();
