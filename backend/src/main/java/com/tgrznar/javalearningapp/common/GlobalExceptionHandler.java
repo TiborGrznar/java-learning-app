@@ -17,6 +17,9 @@ import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundExcept
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
+import com.tgrznar.javalearningapp.schoolclass.exception.ClassNameAlreadyExistsException;
+import com.tgrznar.javalearningapp.schoolclass.exception.InvalidClassDataException;
+import com.tgrznar.javalearningapp.schoolclass.exception.SchoolClassNotFoundException;
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
@@ -53,6 +56,8 @@ import java.util.Map;
  * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
  * MODULE_NOT_FOUND               404     module with the given id does not exist, show a message
  * QUESTION_NOT_FOUND             404     question does not exist in the given module, show a message
+ * CLASS_NOT_FOUND                404     class with the given id does not exist, show a message
+ * CLASS_NAME_ALREADY_EXISTS      409     class name is taken in this school, show in the class form
  * EMAIL_ALREADY_EXISTS           409     e-mail is taken, show in the registration or user form
  * SCHOOL_NAME_ALREADY_EXISTS     409     school name is taken, show in the school form
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
@@ -235,5 +240,27 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleSelfModification() {
         return ErrorResponse.of("SELF_MODIFICATION_NOT_ALLOWED",
                 "Nemôžete zmeniť vlastnú rolu ani deaktivovať vlastný účet");
+    }
+
+    /** 404 CLASS_NOT_FOUND: no class with the requested id. */
+    @ExceptionHandler(SchoolClassNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleClassNotFound() {
+        return ErrorResponse.of("CLASS_NOT_FOUND", "Trieda neexistuje");
+    }
+
+    /** 409 CLASS_NAME_ALREADY_EXISTS: the school already has a class with this name (case-insensitive). */
+    @ExceptionHandler(ClassNameAlreadyExistsException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleClassNameExists() {
+        return ErrorResponse.of("CLASS_NAME_ALREADY_EXISTS", "Trieda s týmto názvom už v škole existuje");
+    }
+
+    /** 400 VALIDATION_ERROR: a business rule on one field of the class form (e.g. the teacher's school differs). */
+    @ExceptionHandler(InvalidClassDataException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInvalidClassData(InvalidClassDataException ex) {
+        return new ErrorResponse("VALIDATION_ERROR", "Formulár obsahuje chyby",
+                Map.of(ex.getField(), ex.getMessage()));
     }
 }
