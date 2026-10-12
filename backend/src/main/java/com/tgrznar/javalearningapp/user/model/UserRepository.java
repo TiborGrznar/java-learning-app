@@ -25,9 +25,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** Used to protect the last active administrator. */
     long countByRoleAndActive(UserRole role, boolean active);
 
-    /** Administrator's user list. A null filter means "any". The school is fetched to avoid N+1 queries. */
+    /** Administrator's user list. A null filter means "any". School and class are fetched to avoid N+1 queries. */
     @Query(value = """
-            select u from User u left join fetch u.school
+            select u from User u left join fetch u.school left join fetch u.schoolClass
             where (:schoolId is null or u.school.id = :schoolId)
               and (:role is null or u.role = :role)
               and (:active is null or u.active = :active)
