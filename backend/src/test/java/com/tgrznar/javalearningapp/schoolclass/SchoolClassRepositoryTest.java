@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -104,6 +105,77 @@ class SchoolClassRepositoryTest {
 
         User loaded = userRepository.findById(student.getId()).orElseThrow();
         assertThat(loaded.getSchoolClass().getId()).isEqualTo(schoolClass.getId());
+    }
+
+    @Test
+    void existsByJoinCode_matchesIgnoringCase() {
+        School school = createSchool();
+        User teacher = createUser(UserRole.TEACHER, school);
+        classRepository.saveAndFlush(newClass(school, teacher, "3.A", "ABCD2345"));
+
+        assertThat(classRepository.existsByJoinCode("ABCD2345")).isTrue();
+        assertThat(classRepository.existsByJoinCode("abcd2345")).isTrue();
+        assertThat(classRepository.existsByJoinCode("ZZZZ9999")).isFalse();
+    }
+
+    @Test
+    void existsBySchoolIdAndName_ignoresCaseAndIsScopedToSchool() {
+        School school = createSchool();
+        School otherSchool = createSchool();
+        User teacher = createUser(UserRole.TEACHER, school);
+        classRepository.saveAndFlush(newClass(school, teacher, "3.A", "ABCD2345"));
+
+        assertThat(classRepository.existsBySchoolIdAndNameIgnoreCase(school.getId(), "3.a")).isTrue();
+        assertThat(classRepository.existsBySchoolIdAndNameIgnoreCase(otherSchool.getId(), "3.A")).isFalse();
+    }
+
+    @Test
+    void existsBySchoolIdAndNameAndIdNot_excludesTheClassItself() {
+        School school = createSchool();
+        User teacher = createUser(UserRole.TEACHER, school);
+        SchoolClass first = classRepository.saveAndFlush(newClass(school, teacher, "3.A", "ABCD2345"));
+        SchoolClass second = classRepository.saveAndFlush(newClass(school, teacher, "3.B", "WXYZ6789"));
+
+        assertThat(classRepository.existsBySchoolIdAndNameIgnoreCaseAndIdNot(school.getId(), "3.A", first.getId()))
+                .isFalse();
+        assertThat(classRepository.existsBySchoolIdAndNameIgnoreCaseAndIdNot(school.getId(), "3.A", second.getId()))
+                .isTrue();
+    }
+
+    @Test
+    void search_filtersBySchoolAndTeacherAndOrdersByName() {
+        School school = createSchool();
+        School otherSchool = createSchool();
+        User teacher = createUser(UserRole.TEACHER, school);
+        User otherTeacher = createUser(UserRole.TEACHER, school);
+        User teacherOfOtherSchool = createUser(UserRole.TEACHER, otherSchool);
+        classRepository.saveAndFlush(newClass(school, teacher, "B-class", "BBBB2222"));
+        classRepository.saveAndFlush(newClass(school, teacher, "A-class", "AAAA2222"));
+        classRepository.saveAndFlush(newClass(school, otherTeacher, "C-class", "CCCC2222"));
+        classRepository.saveAndFlush(newClass(otherSchool, teacherOfOtherSchool, "D-class", "DDDD2222"));
+        entityManager.clear();
+
+        List<SchoolClass> ofSchool = classRepository.search(school.getId(), null, null);
+        List<SchoolClass> ofTeacher = classRepository.search(school.getId(), teacher.getId(), null);
+
+        assertThat(ofSchool).extracting(SchoolClass::getName).containsExactly("A-class", "B-class", "C-class");
+        assertThat(ofTeacher).extracting(SchoolClass::getName).containsExactly("A-class", "B-class");
+    }
+
+    @Test
+    void search_activeFilter_returnsOnlyMatchingClasses() {
+        School school = createSchool();
+        User teacher = createUser(UserRole.TEACHER, school);
+        classRepository.saveAndFlush(newClass(school, teacher, "Active", "AAAA2222"));
+        SchoolClass inactive = newClass(school, teacher, "Inactive", "BBBB2222");
+        inactive.setActive(false);
+        classRepository.saveAndFlush(inactive);
+        entityManager.clear();
+
+        assertThat(classRepository.search(school.getId(), null, true))
+                .extracting(SchoolClass::getName).containsExactly("Active");
+        assertThat(classRepository.search(school.getId(), null, false))
+                .extracting(SchoolClass::getName).containsExactly("Inactive");
     }
 
     private School createSchool() {
