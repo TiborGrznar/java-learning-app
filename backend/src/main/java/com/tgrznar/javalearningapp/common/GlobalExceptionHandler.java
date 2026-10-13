@@ -20,12 +20,19 @@ import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
 import com.tgrznar.javalearningapp.schoolclass.exception.ClassNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.schoolclass.exception.InvalidClassDataException;
 import com.tgrznar.javalearningapp.schoolclass.exception.SchoolClassNotFoundException;
+import com.tgrznar.javalearningapp.schoolclass.exception.AlreadyEnrolledException;
+import com.tgrznar.javalearningapp.schoolclass.exception.InvalidJoinCodeException;
+import com.tgrznar.javalearningapp.schoolclass.exception.SchoolMismatchException;
+import com.tgrznar.javalearningapp.schoolclass.exception.TooManyAttemptsException;
+
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
 import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -65,6 +72,10 @@ import java.util.Map;
  * LAST_ADMIN                     409     the last active administrator cannot be deactivated or demoted, show a message
  * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role or deactivate self, show a message
  * TEACHER_LEADS_CLASSES          409     the teacher leads an active class and cannot be deactivated, demoted or moved, reassign or deactivate the class first
+ * INVALID_JOIN_CODE              404     no active class with an active school has this join code (unknown and inactive are not told apart)
+ * ALREADY_ENROLLED               409     the student already belongs to a class
+ * SCHOOL_MISMATCH                409     the student's school differs from the school of the class
+ * TOO_MANY_ATTEMPTS              429     too many failed enrollment attempts, the Retry-After header says how long to wait
  * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
  * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
@@ -272,5 +283,36 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleTeacherLeadsClasses() {
         return ErrorResponse.of("TEACHER_LEADS_CLASSES",
                 "Učiteľ vedie aktívnu triedu. Najprv triedu preraďte inému učiteľovi alebo ju deaktivujte");
+    }
+
+    /** 404 INVALID_JOIN_CODE: an unknown code and an inactive class give the same answer on purpose. */
+    @ExceptionHandler(InvalidJoinCodeException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleInvalidJoinCode() {
+        return ErrorResponse.of("INVALID_JOIN_CODE", "Kód triedy je neplatný");
+    }
+
+    /** 409 ALREADY_ENROLLED: the student already belongs to a class. */
+    @ExceptionHandler(AlreadyEnrolledException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleAlreadyEnrolled() {
+        return ErrorResponse.of("ALREADY_ENROLLED", "Už ste zaradený do triedy");
+    }
+
+    /** 409 SCHOOL_MISMATCH: the school set by an administrator differs from the school of the class. */
+    @ExceptionHandler(SchoolMismatchException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleSchoolMismatch() {
+        return ErrorResponse.of("SCHOOL_MISMATCH",
+                "Váš účet patrí do inej školy, ako je trieda. Kontaktujte administrátora");
+    }
+
+    /** 429 TOO_MANY_ATTEMPTS: the Retry-After header tells the client how many seconds to wait. */
+    @ExceptionHandler(TooManyAttemptsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyAttempts(TooManyAttemptsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                .body(ErrorResponse.of("TOO_MANY_ATTEMPTS",
+                        "Príliš veľa neúspešných pokusov o pripojenie do triedy. Skúste to znova neskôr"));
     }
 }

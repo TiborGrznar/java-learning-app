@@ -27,6 +27,16 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Long> 
      */
     Optional<SchoolClass> findByIdAndTeacherId(Long id, Long teacherId);
 
+    /**
+     * The class a student can join with this code: the class and its school must both be active. The school is
+     * fetched because the enrollment response and the school check need it.
+     */
+    @Query("""
+            select c from SchoolClass c join fetch c.school
+            where c.joinCode = :joinCode and c.active = true and c.school.active = true
+            """)
+    Optional<SchoolClass> findJoinableByJoinCode(@Param("joinCode") String joinCode);
+
     /** Administrator's class list. A null filter means "any". School and teacher are fetched to avoid N+1 queries. */
     @Query("""
             select c from SchoolClass c join fetch c.school join fetch c.teacher
