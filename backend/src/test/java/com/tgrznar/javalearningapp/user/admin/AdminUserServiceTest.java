@@ -7,6 +7,7 @@ import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.user.dto.ChangeRoleRequest;
 import com.tgrznar.javalearningapp.user.dto.CreateUserRequest;
@@ -394,6 +395,37 @@ class AdminUserServiceTest {
         verifyNoInteractions(classRepository);
     }
 
+    @Test
+    void update_studentMovedToOtherSchool_detachesFromClass() {
+        User student = user(10L, UserRole.STUDENT, true, school(5L, true));
+        student.setSchoolClass(schoolClass(20L));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(schoolRepository.findById(7L)).thenReturn(Optional.of(school(7L, true)));
+        when(userRepository.existsByEmailAndIdNot("jano10@example.com", 10L)).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = service.update(10L,
+                new UpdateUserRequest("Jano", "Novak", "jano10@example.com", 7L), ADMIN_ID);
+
+        assertThat(response.schoolId()).isEqualTo(7L);
+        assertThat(response.classId()).isNull();
+        verifyNoInteractions(classRepository);
+    }
+
+    @Test
+    void update_studentStaysInSameSchool_keepsClass() {
+        User student = user(10L, UserRole.STUDENT, true, school(5L, true));
+        student.setSchoolClass(schoolClass(20L));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(userRepository.existsByEmailAndIdNot("jano10@example.com", 10L)).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = service.update(10L,
+                new UpdateUserRequest("Jano", "Novak", "jano10@example.com", 5L), ADMIN_ID);
+
+        assertThat(response.classId()).isEqualTo(20L);
+    }
+
     // ---------- changeRole ----------
 
     @Test
@@ -494,6 +526,19 @@ class AdminUserServiceTest {
         UserResponse response = service.changeRole(10L, new ChangeRoleRequest(UserRole.STUDENT, null), ADMIN_ID);
 
         assertThat(response.role()).isEqualTo(UserRole.STUDENT);
+    }
+
+    @Test
+    void changeRole_studentToTeacher_detachesFromClass() {
+        User student = user(10L, UserRole.STUDENT, true, school(5L, true));
+        student.setSchoolClass(schoolClass(20L));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = service.changeRole(10L, new ChangeRoleRequest(UserRole.TEACHER, null), ADMIN_ID);
+
+        assertThat(response.role()).isEqualTo(UserRole.TEACHER);
+        assertThat(response.classId()).isNull();
     }
 
     // ---------- setActive ----------
@@ -611,5 +656,12 @@ class AdminUserServiceTest {
         s.setAddress("Address");
         s.setActive(active);
         return s;
+    }
+
+    private static SchoolClass schoolClass(Long id) {
+        SchoolClass c = new SchoolClass();
+        c.setId(id);
+        c.setName("Class " + id);
+        return c;
     }
 }
