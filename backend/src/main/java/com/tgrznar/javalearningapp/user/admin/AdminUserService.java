@@ -103,7 +103,10 @@ public class AdminUserService {
         return UserResponse.from(findOrThrow(id));
     }
 
-    /** Replaces name, surname, e-mail and school. The role and the active flag have their own operations. */
+    /**
+     * Replaces name, surname, e-mail and school. The role and the active flag have their own operations.
+     * A student whose school changes leaves his class, because the class belongs to the old school.
+     */
     @Transactional
     public UserResponse update(Long id, UpdateUserRequest request, Long adminId) {
         User user = findOrThrow(id);
@@ -112,7 +115,8 @@ public class AdminUserService {
         if (user.getRole() == UserRole.TEACHER && school == null) {
             throw new InvalidUserDataException("schoolId", "Učiteľ musí mať priradenú školu");
         }
-        if (user.getRole() == UserRole.TEACHER && schoolChanges(user, school)) {
+        boolean schoolChanges = schoolChanges(user, school);
+        if (user.getRole() == UserRole.TEACHER && schoolChanges) {
             ensureLeadsNoActiveClass(user.getId());
         }
 
@@ -124,6 +128,9 @@ public class AdminUserService {
         user.setName(request.name().trim());
         user.setSurname(request.surname().trim());
         user.setEmail(email);
+        if (user.getRole() == UserRole.STUDENT && schoolChanges) {
+            user.setSchoolClass(null);
+        }
         user.setSchool(school);
 
         User saved = saveUniqueEmail(user);
@@ -131,6 +138,7 @@ public class AdminUserService {
         return UserResponse.from(saved);
     }
 
+    /** Changes the role. A student who stops being one leaves his class, because only students belong to a class. */
     @Transactional
     public UserResponse changeRole(Long id, ChangeRoleRequest request, Long adminId) {
         User user = findOrThrow(id);
@@ -159,6 +167,9 @@ public class AdminUserService {
         }
 
         UserRole previousRole = user.getRole();
+        if (previousRole == UserRole.STUDENT) {
+            user.setSchoolClass(null);
+        }
         user.setRole(request.role());
         user.setSchool(school);
 
@@ -214,9 +225,13 @@ public class AdminUserService {
         return requireActiveSchool(schoolId);
     }
 
+    /** True when the user would end up in a different school; two missing schools are not a change. */
     private boolean schoolChanges(User user, School newSchool) {
         School current = user.getSchool();
-        return current == null || !current.getId().equals(newSchool.getId());
+        if (current == null || newSchool == null) {
+            return current != newSchool;
+        }
+        return !current.getId().equals(newSchool.getId());
     }
 
     private School requireActiveSchool(Long schoolId) {
