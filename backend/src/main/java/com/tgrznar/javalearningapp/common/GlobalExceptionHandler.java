@@ -23,6 +23,7 @@ import com.tgrznar.javalearningapp.schoolclass.exception.SchoolClassNotFoundExce
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
+import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -63,6 +64,7 @@ import java.util.Map;
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
  * LAST_ADMIN                     409     the last active administrator cannot be deactivated or demoted, show a message
  * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role or deactivate self, show a message
+ * TEACHER_LEADS_CLASSES          409     the teacher leads an active class and cannot be deactivated, demoted or moved, reassign or deactivate the class first
  * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
  * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
@@ -262,5 +264,13 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleInvalidClassData(InvalidClassDataException ex) {
         return new ErrorResponse("VALIDATION_ERROR", "Formulár obsahuje chyby",
                 Map.of(ex.getField(), ex.getMessage()));
+    }
+
+    /** 409 TEACHER_LEADS_CLASSES: the teacher leads an active class and cannot be deactivated, demoted or moved. */
+    @ExceptionHandler(TeacherLeadsClassesException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleTeacherLeadsClasses() {
+        return ErrorResponse.of("TEACHER_LEADS_CLASSES",
+                "Učiteľ vedie aktívnu triedu. Najprv triedu preraďte inému učiteľovi alebo ju deaktivujte");
     }
 }

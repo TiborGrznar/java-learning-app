@@ -7,10 +7,12 @@ import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.user.dto.*;
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
+import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
@@ -41,6 +43,7 @@ public class AdminUserService {
     private final PasswordEncoder passwordEncoder;
     private final TemporaryPasswordGenerator passwordGenerator;
     private final RefreshTokenService refreshTokenService;
+    private final SchoolClassRepository classRepository;
 
     /** Creates a teacher or an administrator with a generated temporary password. */
     @Transactional
@@ -109,6 +112,9 @@ public class AdminUserService {
         if (user.getRole() == UserRole.TEACHER && school == null) {
             throw new InvalidUserDataException("schoolId", "Učiteľ musí mať priradenú školu");
         }
+        if (user.getRole() == UserRole.TEACHER && schoolChanges(user, school)) {
+            ensureLeadsNoActiveClass(user.getId());
+        }
 
         String email = normalizeEmail(request.email());
         if (userRepository.existsByEmailAndIdNot(email, id)) {
@@ -136,6 +142,10 @@ public class AdminUserService {
         }
         if (user.getRole() == UserRole.ADMIN && user.isActive()) {
             ensureAnotherActiveAdminExists();
+        }
+        // The requested role differs from the current one here, so a teacher is about to stop being one.
+        if (user.getRole() == UserRole.TEACHER) {
+            ensureLeadsNoActiveClass(user.getId());
         }
 
         School school = user.getSchool();
@@ -173,6 +183,9 @@ public class AdminUserService {
             if (user.getRole() == UserRole.ADMIN) {
                 ensureAnotherActiveAdminExists();
             }
+            if (user.getRole() == UserRole.TEACHER) {
+                ensureLeadsNoActiveClass(user.getId());
+            }
         }
 
         user.setActive(active);
@@ -201,6 +214,11 @@ public class AdminUserService {
         return requireActiveSchool(schoolId);
     }
 
+    private boolean schoolChanges(User user, School newSchool) {
+        School current = user.getSchool();
+        return current == null || !current.getId().equals(newSchool.getId());
+    }
+
     private School requireActiveSchool(Long schoolId) {
         School school = schoolRepository.findById(schoolId)
                 .orElseThrow(() -> new SchoolNotFoundException(schoolId));
@@ -214,6 +232,16 @@ public class AdminUserService {
     private void ensureAnotherActiveAdminExists() {
         if (userRepository.countByRoleAndActive(UserRole.ADMIN, true) <= 1) {
             throw new LastAdminException();
+        }
+    }
+
+    /**
+     * Called for a teacher that is about to be deactivated, demoted or moved to another school. An active class
+     * would be left with a teacher who cannot lead it, so the administrator has to reassign or deactivate it first.
+     */
+    private void ensureLeadsNoActiveClass(Long teacherId) {
+        if (classRepository.existsByTeacherIdAndActive(teacherId, true)) {
+            throw new TeacherLeadsClassesException();
         }
     }
 

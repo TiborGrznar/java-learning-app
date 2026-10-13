@@ -17,6 +17,9 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Long> 
     /** Used when renaming a class: the name may collide with any other class of the school, not with itself. */
     boolean existsBySchoolIdAndNameIgnoreCaseAndIdNot(Long schoolId, String name, Long id);
 
+    /** Used to protect a teacher: whoever leads an active class must not be deactivated, demoted or moved. */
+    boolean existsByTeacherIdAndActive(Long teacherId, boolean active);
+
     /** Administrator's class list. A null filter means "any". School and teacher are fetched to avoid N+1 queries. */
     @Query("""
             select c from SchoolClass c join fetch c.school join fetch c.teacher
