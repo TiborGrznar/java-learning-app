@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Locale;
 
 /** User management by an administrator (UC-04). */
-/** User management by an administrator (UC-04). */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -42,7 +41,6 @@ public class AdminUserService {
     private final PasswordEncoder passwordEncoder;
     private final TemporaryPasswordGenerator passwordGenerator;
     private final RefreshTokenService refreshTokenService;
-
 
     /** Creates a teacher or an administrator with a generated temporary password. */
     @Transactional

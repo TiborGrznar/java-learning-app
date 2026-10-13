@@ -29,6 +29,7 @@ import java.net.URI;
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
+
     @PostMapping
     public ResponseEntity<CreatedUserResponse> create(@Valid @RequestBody CreateUserRequest request,
                                                       @AuthenticationPrincipal Long adminId) {
