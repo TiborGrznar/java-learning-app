@@ -56,6 +56,34 @@ class AdminUserUpdateApiIntegrationTest extends AdminUserApiTestSupport {
     }
 
     @Test
+    void teacherLeadingActiveClass_cannotMoveToAnotherSchool_returns409() throws Exception {
+        School oldSchool = saveSchool(true);
+        School newSchool = saveSchool(true);
+        User teacher = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.TEACHER, oldSchool, "Alfa", true);
+        saveClass(teacher, true);
+
+        as(put(url(teacher.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(updateJson("Jana", "Novakova", teacher.getEmail(), newSchool.getId())), UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TEACHER_LEADS_CLASSES"));
+
+        assertThat(userRepository.findById(teacher.getId()).orElseThrow().getSchool().getId())
+                .isEqualTo(oldSchool.getId());
+    }
+
+    @Test
+    void teacherLeadingActiveClass_canStillBeEditedInTheSameSchool() throws Exception {
+        School school = saveSchool(true);
+        User teacher = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.TEACHER, school, "Alfa", true);
+        saveClass(teacher, true);
+
+        as(put(url(teacher.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(updateJson("Jana", "Novakova", teacher.getEmail(), school.getId())), UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Jana"));
+    }
+
+    @Test
     void keepingOwnEmail_isNotADuplicate() throws Exception {
         User target = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.STUDENT);
 

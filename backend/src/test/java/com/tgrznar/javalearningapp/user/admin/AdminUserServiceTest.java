@@ -7,6 +7,7 @@ import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.user.dto.ChangeRoleRequest;
 import com.tgrznar.javalearningapp.user.dto.CreateUserRequest;
 import com.tgrznar.javalearningapp.user.dto.CreatedUserResponse;
@@ -15,6 +16,7 @@ import com.tgrznar.javalearningapp.user.dto.UserResponse;
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
+import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
@@ -67,6 +69,9 @@ class AdminUserServiceTest {
 
     @Mock
     private RefreshTokenService refreshTokenService;
+
+    @Mock
+    private SchoolClassRepository classRepository;
 
     @InjectMocks
     private AdminUserService service;
@@ -301,6 +306,7 @@ class AdminUserServiceTest {
 
         assertThat(response.schoolId()).isEqualTo(5L);
         verifyNoInteractions(schoolRepository);
+        verifyNoInteractions(classRepository);
     }
 
     @Test
@@ -346,6 +352,46 @@ class AdminUserServiceTest {
         assertThatThrownBy(() -> service.update(10L,
                 new UpdateUserRequest("Peter", "Horvath", "peter@example.com", null), ADMIN_ID))
                 .isInstanceOf(EmailAlreadyExistsException.class);
+    }
+
+    @Test
+    void update_teacherMovedToOtherSchool_whenLeadsActiveClass_isRejected() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.TEACHER, true, school(5L, true))));
+        when(schoolRepository.findById(7L)).thenReturn(Optional.of(school(7L, true)));
+        when(classRepository.existsByTeacherIdAndActive(10L, true)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.update(10L,
+                new UpdateUserRequest("Jana", "Novakova", "jana@example.com", 7L), ADMIN_ID))
+                .isInstanceOf(TeacherLeadsClassesException.class);
+
+        verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void update_teacherMovedToOtherSchool_whenNoActiveClass_isAllowed() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.TEACHER, true, school(5L, true))));
+        when(schoolRepository.findById(7L)).thenReturn(Optional.of(school(7L, true)));
+        when(classRepository.existsByTeacherIdAndActive(10L, true)).thenReturn(false);
+        when(userRepository.existsByEmailAndIdNot("jana@example.com", 10L)).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = service.update(10L,
+                new UpdateUserRequest("Jana", "Novakova", "jana@example.com", 7L), ADMIN_ID);
+
+        assertThat(response.schoolId()).isEqualTo(7L);
+    }
+
+    @Test
+    void update_teacherStaysInSameSchool_doesNotCheckClasses() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.TEACHER, true, school(5L, true))));
+        when(userRepository.existsByEmailAndIdNot("jana@example.com", 10L)).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = service.update(10L,
+                new UpdateUserRequest("Jana", "Novakova", "jana@example.com", 5L), ADMIN_ID);
+
+        assertThat(response.schoolId()).isEqualTo(5L);
+        verifyNoInteractions(classRepository);
     }
 
     // ---------- changeRole ----------
@@ -428,6 +474,28 @@ class AdminUserServiceTest {
         verify(userRepository, never()).saveAndFlush(any());
     }
 
+    @Test
+    void changeRole_teacherDemoted_whenLeadsActiveClass_isRejected() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.TEACHER, true, school(5L, true))));
+        when(classRepository.existsByTeacherIdAndActive(10L, true)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.changeRole(10L, new ChangeRoleRequest(UserRole.STUDENT, null), ADMIN_ID))
+                .isInstanceOf(TeacherLeadsClassesException.class);
+
+        verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void changeRole_teacherDemoted_whenNoActiveClass_isAllowed() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.TEACHER, true, school(5L, true))));
+        when(classRepository.existsByTeacherIdAndActive(10L, true)).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = service.changeRole(10L, new ChangeRoleRequest(UserRole.STUDENT, null), ADMIN_ID);
+
+        assertThat(response.role()).isEqualTo(UserRole.STUDENT);
+    }
+
     // ---------- setActive ----------
 
     @Test
@@ -490,6 +558,30 @@ class AdminUserServiceTest {
     void setActive_adminDeactivated_whenAnotherActiveAdminExists() {
         when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.ADMIN, true, null)));
         when(userRepository.countByRoleAndActive(UserRole.ADMIN, true)).thenReturn(2L);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = service.setActive(10L, false, ADMIN_ID);
+
+        assertThat(response.active()).isFalse();
+        verify(refreshTokenService).revokeAllForUser(10L);
+    }
+
+    @Test
+    void setActive_teacherLeadingActiveClass_isRejected() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.TEACHER, true, school(5L, true))));
+        when(classRepository.existsByTeacherIdAndActive(10L, true)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.setActive(10L, false, ADMIN_ID))
+                .isInstanceOf(TeacherLeadsClassesException.class);
+
+        verify(userRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void setActive_teacherWithoutActiveClass_isDeactivated() {
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user(10L, UserRole.TEACHER, true, school(5L, true))));
+        when(classRepository.existsByTeacherIdAndActive(10L, true)).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
         UserResponse response = service.setActive(10L, false, ADMIN_ID);

@@ -1,6 +1,7 @@
 package com.tgrznar.javalearningapp.user.admin.api;
 
 import com.jayway.jsonpath.JsonPath;
+import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
@@ -77,6 +78,32 @@ class AdminUserActiveApiIntegrationTest extends AdminUserApiTestSupport {
                 .andExpect(jsonPath("$.code").value("LAST_ADMIN"));
 
         assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void teacherLeadingActiveClass_returns409AndStaysActive() throws Exception {
+        School school = saveSchool(true);
+        User teacher = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.TEACHER, school, "Alfa", true);
+        saveClass(teacher, true);
+
+        as(patch(url(teacher.getId()) + "/active").contentType(MediaType.APPLICATION_JSON).content(activeJson(false)),
+                UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TEACHER_LEADS_CLASSES"));
+
+        assertThat(userRepository.findById(teacher.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void teacherWithOnlyInactiveClass_isDeactivated() throws Exception {
+        School school = saveSchool(true);
+        User teacher = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.TEACHER, school, "Alfa", true);
+        saveClass(teacher, false);
+
+        as(patch(url(teacher.getId()) + "/active").contentType(MediaType.APPLICATION_JSON).content(activeJson(false)),
+                UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false));
     }
 
     @Test
