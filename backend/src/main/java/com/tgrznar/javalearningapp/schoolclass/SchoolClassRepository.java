@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface SchoolClassRepository extends JpaRepository<SchoolClass, Long> {
 
@@ -19,6 +20,12 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Long> 
 
     /** Used to protect a teacher: whoever leads an active class must not be deactivated, demoted or moved. */
     boolean existsByTeacherIdAndActive(Long teacherId, boolean active);
+
+    /**
+     * A class of the given teacher. Ownership is part of the query on purpose: a teacher must never be able to
+     * read or change a class of someone else, and the join code is a credential.
+     */
+    Optional<SchoolClass> findByIdAndTeacherId(Long id, Long teacherId);
 
     /** Administrator's class list. A null filter means "any". School and teacher are fetched to avoid N+1 queries. */
     @Query("""
