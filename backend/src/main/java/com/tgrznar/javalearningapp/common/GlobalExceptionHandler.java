@@ -24,6 +24,7 @@ import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
 import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
+import com.tgrznar.javalearningapp.user.exception.UserNotDeletableException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -66,6 +67,7 @@ import java.util.Map;
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
  * LAST_ADMIN                     409     the last active administrator cannot be deactivated or demoted, show a message
  * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role or deactivate self, show a message
+ * USER_NOT_DELETABLE             409     only a student can be deleted, the user is a teacher or an administrator, offer deactivation instead
  * TEACHER_LEADS_CLASSES          409     the teacher leads an active class and cannot be deactivated, demoted or moved, reassign or deactivate the class first
  * INVALID_JOIN_CODE              404     no active class with an active school has this join code (unknown and inactive are not told apart)
  * ALREADY_ENROLLED               409     the student already belongs to a class
@@ -248,6 +250,14 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleSelfModification() {
         return ErrorResponse.of("SELF_MODIFICATION_NOT_ALLOWED",
                 "Nemôžete zmeniť vlastnú rolu ani deaktivovať vlastný účet");
+    }
+
+    /** 409 USER_NOT_DELETABLE: only students are deleted, teachers and administrators are deactivated. */
+    @ExceptionHandler(UserNotDeletableException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleUserNotDeletable() {
+        return ErrorResponse.of("USER_NOT_DELETABLE",
+                "Zmazať možno len študenta. Učiteľa alebo administrátora deaktivujte");
     }
 
     /** 404 CLASS_NOT_FOUND: no class with the requested id. */

@@ -14,6 +14,7 @@ import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
 import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
+import com.tgrznar.javalearningapp.user.exception.UserNotDeletableException;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -207,6 +208,28 @@ public class AdminUserService {
 
         log.info("User active flag changed: id={}, active={}, changedByAdminId={}", saved.getId(), active, adminId);
         return UserResponse.from(saved);
+    }
+
+    /**
+     * Permanently deletes a student. His refresh tokens, progress and results go with him (cascade in the
+     * database). Teachers and administrators are never deleted, they are deactivated. The caller has to repeat
+     * the student's e-mail, so a wrong id or a misclick does not destroy data.
+     */
+    @Transactional
+    public void deleteStudent(Long id, String confirmEmail, Long adminId) {
+        User user = findOrThrow(id);
+        if (user.getRole() != UserRole.STUDENT) {
+            throw new UserNotDeletableException(id);
+        }
+        if (confirmEmail == null || !user.getEmail().equalsIgnoreCase(confirmEmail.trim())) {
+            throw new InvalidUserDataException("confirmEmail", "Zadaný e-mail sa nezhoduje s e-mailom študenta");
+        }
+
+        userRepository.delete(user);
+        // Flush now so a violated foreign key surfaces here, inside the transaction.
+        userRepository.flush();
+        // The e-mail is personal data, so only ids are logged.
+        log.info("Student deleted: id={}, deletedByAdminId={}", id, adminId);
     }
 
     private User findOrThrow(Long id) {
