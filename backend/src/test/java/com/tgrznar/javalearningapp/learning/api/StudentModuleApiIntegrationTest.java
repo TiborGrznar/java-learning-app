@@ -6,6 +6,10 @@ import com.tgrznar.javalearningapp.module.CourseModuleRepository;
 import com.tgrznar.javalearningapp.quizquestion.QuizOption;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestion;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestionRepository;
+import com.tgrznar.javalearningapp.school.SchoolRepository;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
+import com.tgrznar.javalearningapp.testsupport.EnrolledClassFactory;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -56,6 +60,12 @@ class StudentModuleApiIntegrationTest {
 
     @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private SchoolRepository schoolRepository;
+
+    @Autowired
+    private SchoolClassRepository classRepository;
 
     /**
      * Modules already present in the development database would take part in the course order
@@ -324,6 +334,13 @@ class StudentModuleApiIntegrationTest {
         // Not a valid BCrypt hash: these users never log in, they only get a token.
         user.setPasswordHash("not-a-real-hash");
         user.setRole(role);
+        if (role == UserRole.STUDENT) {
+            // Learning endpoints are open only to students who joined a class.
+            SchoolClass schoolClass = new EnrolledClassFactory(userRepository, schoolRepository, classRepository)
+                    .saveClass(true);
+            user.setSchool(schoolClass.getSchool());
+            user.setSchoolClass(schoolClass);
+        }
         return userRepository.saveAndFlush(user);
     }
 
