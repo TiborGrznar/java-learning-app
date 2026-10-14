@@ -1,6 +1,6 @@
 # Java Learning App
 
-Interactive web application for learning the Java programming language. Each learning module combines theory, a quiz and a coding task. Students track their progress, teachers follow their classes, administrators manage schools and users.
+Interactive web application for learning the Java programming language. Each learning module combines theory, a quiz and a coding task. Students track their progress, teachers follow their classes, administrators manage schools, classes and users.
 
 Bachelor's thesis project at the Faculty of Natural Sciences, Matej Bel University in Banská Bystrica.
 
@@ -12,10 +12,12 @@ Work in progress.
 |------|-------|
 | Database schema (Flyway) and JPA entities | Done |
 | Authentication (JWT access token + rotating refresh token) | Done |
-| Administrator: school and user management | Done |
+| Administrator: school, user, class, module and quiz question management | Done |
+| Classes and student enrollment with a join code | Done |
+| Teacher: own classes and their join codes | Done |
+| Student: modules with step-by-step unlocking, theory, quiz | Done |
 | Teacher: student overview and deactivation of students | Planned |
-| Class management and student enrollment | Planned |
-| Quizzes, coding tasks, progress tracking | Planned |
+| Coding tasks, progress overviews and archiving | Planned |
 | Sandboxed execution of student code | Planned |
 | Frontend (React + TypeScript) | Not started |
 
@@ -38,11 +40,48 @@ All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires
 | POST | `/users` | `ADMIN` | Creates a teacher or an administrator (`201`). A teacher needs an active school. The response carries a generated temporary password, shown only once (`Cache-Control: no-store`) |
 | GET | `/users` | `ADMIN` | Page of users. Filters `schoolId`, `role`, `active`; paging `page` (from 0, default 0) and `size` (default 20, at most 100); sorted by surname, name, id |
 | GET | `/users/{id}` | `ADMIN` | Detail of a user |
-| PUT | `/users/{id}` | `ADMIN` | Replaces name, surname, e-mail and school. The role and the active flag have their own endpoints |
-| PATCH | `/users/{id}/role` | `ADMIN` | Changes the role. Changing to `TEACHER` needs a school |
+| PUT | `/users/{id}` | `ADMIN` | Replaces name, surname, e-mail and school. The role and the active flag have their own endpoints. A student whose school changes leaves the class |
+| PATCH | `/users/{id}/role` | `ADMIN` | Changes the role. Changing to `TEACHER` needs a school. A student who changes role leaves the class |
 | PATCH | `/users/{id}/active` | `ADMIN` | Deactivates or reactivates an account. Deactivation also revokes all refresh tokens of the user |
+| DELETE | `/users/{id}?confirmEmail=...` | `ADMIN` | Deletes a student for good (`204`) together with their progress, results and tokens. `confirmEmail` must repeat the student's e-mail. Teachers and administrators cannot be deleted |
+| POST | `/modules` | `ADMIN` | Creates a learning module |
+| GET | `/modules` | `ADMIN` | Lists modules |
+| GET | `/modules/{id}` | `ADMIN` | Detail of a module |
+| PUT | `/modules/{id}` | `ADMIN` | Replaces a module |
+| PATCH | `/modules/{id}/active` | `ADMIN` | Deactivates or reactivates a module (modules are never deleted) |
+| POST | `/modules/{moduleId}/questions` | `ADMIN` | Adds a quiz question to a module |
+| GET | `/modules/{moduleId}/questions` | `ADMIN` | Lists the questions of a module |
+| GET | `/modules/{moduleId}/questions/{id}` | `ADMIN` | Detail of a question |
+| PUT | `/modules/{moduleId}/questions/{id}` | `ADMIN` | Replaces a question |
+| DELETE | `/modules/{moduleId}/questions/{id}` | `ADMIN` | Deletes a question |
+| POST | `/classes` | `ADMIN` | Creates a class with a generated join code |
+| GET | `/classes` | `ADMIN` | Lists classes. Filters `schoolId`, `teacherId`, `active` |
+| GET | `/classes/{id}` | `ADMIN` | Detail of a class, including the join code |
+| PUT | `/classes/{id}` | `ADMIN` | Replaces the name and the teacher of a class. The school of a class never changes |
+| PATCH | `/classes/{id}/active` | `ADMIN` | Deactivates or reactivates a class (classes are never deleted) |
+| POST | `/classes/{id}/join-code` | `ADMIN` | Generates a new join code, the old one stops working |
+| GET | `/teacher/classes` | `TEACHER` | Classes led by the signed-in teacher. Filter `active` |
+| GET | `/teacher/classes/{id}` | `TEACHER` | Detail of an own class, including the join code. A class of another teacher answers `404 CLASS_NOT_FOUND` |
+| POST | `/teacher/classes/{id}/join-code` | `TEACHER` | Generates a new join code of an own class |
+| POST | `/enrollments` | `STUDENT` | Joins the class with the given `joinCode` (`200`). See the class rules below |
+| GET | `/learning/modules` | `STUDENT` in a class | Active modules in course order with `locked` and `status`, without the theory text |
+| GET | `/learning/modules/{id}` | `STUDENT` in a class | Module with the theory text and progress flags. A locked module answers `403 MODULE_LOCKED` |
+| POST | `/learning/modules/{id}/theory-completed` | `STUDENT` in a class | Marks the theory as read and returns the module |
+| GET | `/learning/modules/{moduleId}/quiz` | `STUDENT` in a class | Draws a quiz of up to ten questions and a quiz token (`Cache-Control: no-store`). The theory must be read first |
+| POST | `/learning/modules/{moduleId}/quiz/submissions` | `STUDENT` in a class | Evaluates the answers of a drawn quiz |
 
 Rules of user management: an administrator cannot change their own role or deactivate themselves, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them. There is no password change yet, so the temporary password of a new teacher stays valid until that is implemented.
+
+Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
+
+Rules of classes and enrollment:
+
+- A class belongs to one school and is led by one teacher of that school. Only administrators create classes. A class is deactivated, never deleted. Deactivating a class only closes it to new students, the students already in it keep their access.
+- The join code has 8 characters and is shown only to administrators and to the teacher of the class. Generating a new code invalidates the old one. An unknown code, a deactivated class and a deactivated school all answer the same `404 INVALID_JOIN_CODE`.
+- A student joins with the code and gets the school of the class. A student who is already in a class answers `409 ALREADY_ENROLLED`, a student whose school differs from the school of the class answers `409 SCHOOL_MISMATCH`.
+- After 5 failed attempts within 15 minutes a student answers `429 TOO_MANY_ATTEMPTS` with a `Retry-After` header. The counter lives in memory of one application instance.
+- A student who has not joined a class gets `403 NOT_ENROLLED` on everything under `/learning/**`. Teachers and administrators get `403 ACCESS_DENIED` there.
+- A module is unlocked when it is the first active one, when the student passed the quiz of the previous active module, or when the student already has progress in it.
 
 Errors use a uniform JSON body. `code` is a stable identifier for client logic, `message` is a Slovak text for the user, `fieldErrors` is present only for validation errors:
 
@@ -59,19 +98,35 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 400 | `VALIDATION_ERROR` | A field is missing or invalid, details in `fieldErrors` |
 | 400 | `INVALID_REQUEST_BODY` | The body is not valid JSON or contains an unknown value (e.g. an unknown role) |
 | 400 | `PASSWORD_MISMATCH` | Password and its confirmation differ |
+| 400 | `INVALID_QUIZ_TOKEN` | The quiz token is malformed or was issued for someone else, load the quiz again |
 | 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
 | 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired or revoked |
-| 401 | `INVALID_TOKEN` | The access token is malformed or expired |
-| 401 | `UNAUTHENTICATED` | No access token was sent |
+| 401 | `INVALID_TOKEN` | The access token is valid, but its user no longer exists |
+| 401 | `UNAUTHENTICATED` | No access token was sent, or it is invalid or expired |
 | 403 | `ACCOUNT_DISABLED` | The account is deactivated |
 | 403 | `ACCESS_DENIED` | The role of the user does not allow the operation |
+| 403 | `MODULE_LOCKED` | The quiz of the previous module has not been passed yet |
+| 403 | `NOT_ENROLLED` | The student has not joined a class yet |
 | 404 | `SCHOOL_NOT_FOUND` | The school does not exist |
 | 404 | `USER_NOT_FOUND` | The user does not exist |
+| 404 | `MODULE_NOT_FOUND` | The module does not exist or is deactivated |
+| 404 | `QUESTION_NOT_FOUND` | The question does not exist in the given module |
+| 404 | `CLASS_NOT_FOUND` | The class does not exist (or belongs to another teacher) |
+| 404 | `INVALID_JOIN_CODE` | No active class of an active school has this join code |
 | 409 | `EMAIL_ALREADY_EXISTS` | The e-mail is already registered |
 | 409 | `SCHOOL_NAME_ALREADY_EXISTS` | A school with the same name exists |
 | 409 | `SCHOOL_INACTIVE` | The school is deactivated and cannot get new users |
 | 409 | `LAST_ADMIN` | The last active administrator cannot be removed |
 | 409 | `SELF_MODIFICATION_NOT_ALLOWED` | An administrator cannot change their own role or deactivate themselves |
+| 409 | `USER_NOT_DELETABLE` | Only a student can be deleted, a teacher or an administrator is deactivated |
+| 409 | `CLASS_NAME_ALREADY_EXISTS` | The school already has a class with this name |
+| 409 | `TEACHER_LEADS_CLASSES` | The teacher leads an active class, reassign or deactivate the class first |
+| 409 | `ALREADY_ENROLLED` | The student already belongs to a class |
+| 409 | `SCHOOL_MISMATCH` | The school of the student differs from the school of the class |
+| 409 | `THEORY_NOT_COMPLETED` | The theory of the module has not been marked as read yet |
+| 409 | `QUIZ_NOT_AVAILABLE` | The module has no quiz questions |
+| 409 | `QUIZ_OUTDATED` | The quiz expired or one of its questions was deleted, load it again |
+| 429 | `TOO_MANY_ATTEMPTS` | Too many failed enrollment attempts, the `Retry-After` header says how many seconds to wait |
 
 ## Tech stack
 
@@ -149,7 +204,7 @@ cd backend
 .\mvnw.cmd test
 ```
 
-The tests need the database container and the environment variables from step 3 (including `JWT_SECRET`). The integration tests run against the local development database, every test is rolled back, so no data is left behind.
+The tests need the database container and the environment variables from step 3 (including `JWT_SECRET`). The integration tests run against the local development database, every test is rolled back, so no data is left behind. Flyway migrations are the exception: running the tests brings the development database to the latest schema version.
 
 ## Continuous integration
 
@@ -188,7 +243,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   │   ├── exception/    authentication exceptions
 │       │   │   │   ├── security/     JWT service, filter, security config, 401/403 JSON handlers
 │       │   │   │   └── token/        refresh token entity, repository and service
-│       │   │   ├── common/       global exception handler, error body, page response
+│       │   │   ├── common/       global exception handler, error body, page response, MVC configuration
 │       │   │   ├── user/
 │       │   │   │   ├── model/        user entity, role, repository
 │       │   │   │   ├── admin/        user management by an administrator
@@ -198,12 +253,21 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   ├── school/       school entity, repository, service, controller
 │       │   │   │   ├── dto/
 │       │   │   │   └── exception/
-│       │   │   ├── module/ quizquestion/ codingtask/
-│       │   │   └── quizresult/ codingresult/ userprogress/
+│       │   │   ├── schoolclass/  classes and join codes
+│       │   │   │   ├── admin/        class management by an administrator
+│       │   │   │   ├── teacher/      classes of a teacher
+│       │   │   │   ├── enrollment/   joining a class, attempt limit, gate for /learning/**
+│       │   │   │   ├── dto/
+│       │   │   │   └── exception/
+│       │   │   ├── module/       course modules (admin/ holds their management)
+│       │   │   ├── quizquestion/ quiz questions (admin/ holds their management)
+│       │   │   ├── learning/     the student's view: modules, theory, progress
+│       │   │   │   └── quiz/         quiz draw and evaluation
+│       │   │   └── codingtask/ quizresult/ codingresult/ userprogress/
 │       │   └── resources/
 │       │       ├── application.yaml
-│       │       └── db/migration/ Flyway migrations (V1, V2, ...)
-│       └── test/             unit and integration tests
+│       │       └── db/migration/ Flyway migrations (V1 to V5)
+│       └── test/             unit and integration tests, testsupport/ holds shared test fixtures
 ├── docker-compose.yml    local MySQL
 └── .env.example          template of required environment variables
 ```
@@ -212,7 +276,7 @@ Tests lie in the package of the tested class (they need package-private access i
 
 ## Database migrations
 
-Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V4__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag.
+Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V6__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
 
 ## Development workflow
 
