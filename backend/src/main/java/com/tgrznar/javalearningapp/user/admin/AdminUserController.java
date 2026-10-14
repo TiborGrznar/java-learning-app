@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 import java.net.URI;
 
@@ -29,6 +32,7 @@ import java.net.URI;
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
+
     @PostMapping
     public ResponseEntity<CreatedUserResponse> create(@Valid @RequestBody CreateUserRequest request,
                                                       @AuthenticationPrincipal Long adminId) {
@@ -72,5 +76,14 @@ public class AdminUserController {
                                   @Valid @RequestBody UserActiveRequest request,
                                   @AuthenticationPrincipal Long adminId) {
         return adminUserService.setActive(id, request.active(), adminId);
+    }
+
+    /** Deletes a student for good. The student's e-mail has to be repeated in {@code confirmEmail}. */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteStudent(@PathVariable Long id,
+                              @RequestParam(required = false) String confirmEmail,
+                              @AuthenticationPrincipal Long adminId) {
+        adminUserService.deleteStudent(id, confirmEmail, adminId);
     }
 }

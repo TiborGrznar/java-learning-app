@@ -17,11 +17,17 @@ import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundExcept
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
+import com.tgrznar.javalearningapp.schoolclass.exception.*;
+
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
+import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
+import com.tgrznar.javalearningapp.user.exception.UserNotDeletableException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -49,15 +55,24 @@ import java.util.Map;
  * ACCOUNT_DISABLED               403     account deactivated, show a message, no retry
  * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
  * MODULE_LOCKED                  403     module is locked until the previous module's quiz is passed, show it as locked, no retry
+ * NOT_ENROLLED                   403     the student has not joined a class yet, send them to the join code form (POST /api/v1/enrollments)
  * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message
  * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
  * MODULE_NOT_FOUND               404     module with the given id does not exist, show a message
  * QUESTION_NOT_FOUND             404     question does not exist in the given module, show a message
+ * CLASS_NOT_FOUND                404     class with the given id does not exist, show a message
+ * CLASS_NAME_ALREADY_EXISTS      409     class name is taken in this school, show in the class form
  * EMAIL_ALREADY_EXISTS           409     e-mail is taken, show in the registration or user form
  * SCHOOL_NAME_ALREADY_EXISTS     409     school name is taken, show in the school form
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
  * LAST_ADMIN                     409     the last active administrator cannot be deactivated or demoted, show a message
  * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role or deactivate self, show a message
+ * USER_NOT_DELETABLE             409     only a student can be deleted, the user is a teacher or an administrator, offer deactivation instead
+ * TEACHER_LEADS_CLASSES          409     the teacher leads an active class and cannot be deactivated, demoted or moved, reassign or deactivate the class first
+ * INVALID_JOIN_CODE              404     no active class with an active school has this join code (unknown and inactive are not told apart)
+ * ALREADY_ENROLLED               409     the student already belongs to a class
+ * SCHOOL_MISMATCH                409     the student's school differs from the school of the class
+ * TOO_MANY_ATTEMPTS              429     too many failed enrollment attempts, the Retry-After header says how long to wait
  * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
  * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
@@ -235,5 +250,81 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleSelfModification() {
         return ErrorResponse.of("SELF_MODIFICATION_NOT_ALLOWED",
                 "Nemôžete zmeniť vlastnú rolu ani deaktivovať vlastný účet");
+    }
+
+    /** 409 USER_NOT_DELETABLE: only students are deleted, teachers and administrators are deactivated. */
+    @ExceptionHandler(UserNotDeletableException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleUserNotDeletable() {
+        return ErrorResponse.of("USER_NOT_DELETABLE",
+                "Zmazať možno len študenta. Učiteľa alebo administrátora deaktivujte");
+    }
+
+    /** 404 CLASS_NOT_FOUND: no class with the requested id. */
+    @ExceptionHandler(SchoolClassNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleClassNotFound() {
+        return ErrorResponse.of("CLASS_NOT_FOUND", "Trieda neexistuje");
+    }
+
+    /** 409 CLASS_NAME_ALREADY_EXISTS: the school already has a class with this name (case-insensitive). */
+    @ExceptionHandler(ClassNameAlreadyExistsException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleClassNameExists() {
+        return ErrorResponse.of("CLASS_NAME_ALREADY_EXISTS", "Trieda s týmto názvom už v škole existuje");
+    }
+
+    /** 400 VALIDATION_ERROR: a business rule on one field of the class form (e.g. the teacher's school differs). */
+    @ExceptionHandler(InvalidClassDataException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInvalidClassData(InvalidClassDataException ex) {
+        return new ErrorResponse("VALIDATION_ERROR", "Formulár obsahuje chyby",
+                Map.of(ex.getField(), ex.getMessage()));
+    }
+
+    /** 409 TEACHER_LEADS_CLASSES: the teacher leads an active class and cannot be deactivated, demoted or moved. */
+    @ExceptionHandler(TeacherLeadsClassesException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleTeacherLeadsClasses() {
+        return ErrorResponse.of("TEACHER_LEADS_CLASSES",
+                "Učiteľ vedie aktívnu triedu. Najprv triedu preraďte inému učiteľovi alebo ju deaktivujte");
+    }
+
+    /** 404 INVALID_JOIN_CODE: an unknown code and an inactive class give the same answer on purpose. */
+    @ExceptionHandler(InvalidJoinCodeException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleInvalidJoinCode() {
+        return ErrorResponse.of("INVALID_JOIN_CODE", "Kód triedy je neplatný");
+    }
+
+    /** 409 ALREADY_ENROLLED: the student already belongs to a class. */
+    @ExceptionHandler(AlreadyEnrolledException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleAlreadyEnrolled() {
+        return ErrorResponse.of("ALREADY_ENROLLED", "Už ste zaradený do triedy");
+    }
+
+    /** 409 SCHOOL_MISMATCH: the school set by an administrator differs from the school of the class. */
+    @ExceptionHandler(SchoolMismatchException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleSchoolMismatch() {
+        return ErrorResponse.of("SCHOOL_MISMATCH",
+                "Váš účet patrí do inej školy, ako je trieda. Kontaktujte administrátora");
+    }
+
+    /** 429 TOO_MANY_ATTEMPTS: the Retry-After header tells the client how many seconds to wait. */
+    @ExceptionHandler(TooManyAttemptsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyAttempts(TooManyAttemptsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                .body(ErrorResponse.of("TOO_MANY_ATTEMPTS",
+                        "Príliš veľa neúspešných pokusov o pripojenie do triedy. Skúste to znova neskôr"));
+    }
+
+    /** 403 NOT_ENROLLED: a student without a class opened the learning content, see EnrollmentGateInterceptor. */
+    @ExceptionHandler(NotEnrolledException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleNotEnrolled() {
+        return ErrorResponse.of("NOT_ENROLLED", "Najprv sa pripojte k triede pomocou kódu od učiteľa");
     }
 }

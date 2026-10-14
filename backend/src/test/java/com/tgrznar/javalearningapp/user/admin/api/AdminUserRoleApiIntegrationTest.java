@@ -77,6 +77,20 @@ class AdminUserRoleApiIntegrationTest extends AdminUserApiTestSupport {
     }
 
     @Test
+    void teacherLeadingActiveClass_cannotBeDemoted_returns409() throws Exception {
+        School school = saveSchool(true);
+        User teacher = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.TEACHER, school, "Alfa", true);
+        saveClass(teacher, true);
+
+        as(patch(url(teacher.getId()) + "/role").contentType(MediaType.APPLICATION_JSON)
+                .content(roleJson("STUDENT", null)), UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TEACHER_LEADS_CLASSES"));
+
+        assertThat(userRepository.findById(teacher.getId()).orElseThrow().getRole()).isEqualTo(UserRole.TEACHER);
+    }
+
+    @Test
     void missingRole_returns400WithFieldError() throws Exception {
         User target = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.STUDENT);
 

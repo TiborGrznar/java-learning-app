@@ -7,11 +7,14 @@ import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.user.dto.*;
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
+import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
+import com.tgrznar.javalearningapp.user.exception.UserNotDeletableException;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -28,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Locale;
 
 /** User management by an administrator (UC-04). */
-/** User management by an administrator (UC-04). */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -42,7 +44,7 @@ public class AdminUserService {
     private final PasswordEncoder passwordEncoder;
     private final TemporaryPasswordGenerator passwordGenerator;
     private final RefreshTokenService refreshTokenService;
-
+    private final SchoolClassRepository classRepository;
 
     /** Creates a teacher or an administrator with a generated temporary password. */
     @Transactional
@@ -102,7 +104,10 @@ public class AdminUserService {
         return UserResponse.from(findOrThrow(id));
     }
 
-    /** Replaces name, surname, e-mail and school. The role and the active flag have their own operations. */
+    /**
+     * Replaces name, surname, e-mail and school. The role and the active flag have their own operations.
+     * A student whose school changes leaves his class, because the class belongs to the old school.
+     */
     @Transactional
     public UserResponse update(Long id, UpdateUserRequest request, Long adminId) {
         User user = findOrThrow(id);
@@ -110,6 +115,10 @@ public class AdminUserService {
         School school = resolveSchool(user, request.schoolId());
         if (user.getRole() == UserRole.TEACHER && school == null) {
             throw new InvalidUserDataException("schoolId", "Učiteľ musí mať priradenú školu");
+        }
+        boolean schoolChanges = schoolChanges(user, school);
+        if (user.getRole() == UserRole.TEACHER && schoolChanges) {
+            ensureLeadsNoActiveClass(user.getId());
         }
 
         String email = normalizeEmail(request.email());
@@ -120,6 +129,9 @@ public class AdminUserService {
         user.setName(request.name().trim());
         user.setSurname(request.surname().trim());
         user.setEmail(email);
+        if (user.getRole() == UserRole.STUDENT && schoolChanges) {
+            user.setSchoolClass(null);
+        }
         user.setSchool(school);
 
         User saved = saveUniqueEmail(user);
@@ -127,6 +139,7 @@ public class AdminUserService {
         return UserResponse.from(saved);
     }
 
+    /** Changes the role. A student who stops being one leaves his class, because only students belong to a class. */
     @Transactional
     public UserResponse changeRole(Long id, ChangeRoleRequest request, Long adminId) {
         User user = findOrThrow(id);
@@ -138,6 +151,10 @@ public class AdminUserService {
         }
         if (user.getRole() == UserRole.ADMIN && user.isActive()) {
             ensureAnotherActiveAdminExists();
+        }
+        // The requested role differs from the current one here, so a teacher is about to stop being one.
+        if (user.getRole() == UserRole.TEACHER) {
+            ensureLeadsNoActiveClass(user.getId());
         }
 
         School school = user.getSchool();
@@ -151,6 +168,9 @@ public class AdminUserService {
         }
 
         UserRole previousRole = user.getRole();
+        if (previousRole == UserRole.STUDENT) {
+            user.setSchoolClass(null);
+        }
         user.setRole(request.role());
         user.setSchool(school);
 
@@ -175,6 +195,9 @@ public class AdminUserService {
             if (user.getRole() == UserRole.ADMIN) {
                 ensureAnotherActiveAdminExists();
             }
+            if (user.getRole() == UserRole.TEACHER) {
+                ensureLeadsNoActiveClass(user.getId());
+            }
         }
 
         user.setActive(active);
@@ -185,6 +208,28 @@ public class AdminUserService {
 
         log.info("User active flag changed: id={}, active={}, changedByAdminId={}", saved.getId(), active, adminId);
         return UserResponse.from(saved);
+    }
+
+    /**
+     * Permanently deletes a student. His refresh tokens, progress and results go with him (cascade in the
+     * database). Teachers and administrators are never deleted, they are deactivated. The caller has to repeat
+     * the student's e-mail, so a wrong id or a misclick does not destroy data.
+     */
+    @Transactional
+    public void deleteStudent(Long id, String confirmEmail, Long adminId) {
+        User user = findOrThrow(id);
+        if (user.getRole() != UserRole.STUDENT) {
+            throw new UserNotDeletableException(id);
+        }
+        if (confirmEmail == null || !user.getEmail().equalsIgnoreCase(confirmEmail.trim())) {
+            throw new InvalidUserDataException("confirmEmail", "Zadaný e-mail sa nezhoduje s e-mailom študenta");
+        }
+
+        userRepository.delete(user);
+        // Flush now so a violated foreign key surfaces here, inside the transaction.
+        userRepository.flush();
+        // The e-mail is personal data, so only ids are logged.
+        log.info("Student deleted: id={}, deletedByAdminId={}", id, adminId);
     }
 
     private User findOrThrow(Long id) {
@@ -203,6 +248,15 @@ public class AdminUserService {
         return requireActiveSchool(schoolId);
     }
 
+    /** True when the user would end up in a different school; two missing schools are not a change. */
+    private boolean schoolChanges(User user, School newSchool) {
+        School current = user.getSchool();
+        if (current == null || newSchool == null) {
+            return current != newSchool;
+        }
+        return !current.getId().equals(newSchool.getId());
+    }
+
     private School requireActiveSchool(Long schoolId) {
         School school = schoolRepository.findById(schoolId)
                 .orElseThrow(() -> new SchoolNotFoundException(schoolId));
@@ -216,6 +270,16 @@ public class AdminUserService {
     private void ensureAnotherActiveAdminExists() {
         if (userRepository.countByRoleAndActive(UserRole.ADMIN, true) <= 1) {
             throw new LastAdminException();
+        }
+    }
+
+    /**
+     * Called for a teacher that is about to be deactivated, demoted or moved to another school. An active class
+     * would be left with a teacher who cannot lead it, so the administrator has to reassign or deactivate it first.
+     */
+    private void ensureLeadsNoActiveClass(Long teacherId) {
+        if (classRepository.existsByTeacherIdAndActive(teacherId, true)) {
+            throw new TeacherLeadsClassesException();
         }
     }
 

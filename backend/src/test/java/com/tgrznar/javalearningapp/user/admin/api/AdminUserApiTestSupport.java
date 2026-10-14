@@ -3,6 +3,8 @@ package com.tgrznar.javalearningapp.user.admin.api;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -38,6 +40,9 @@ abstract class AdminUserApiTestSupport {
 
     @Autowired
     protected SchoolRepository schoolRepository;
+
+    @Autowired
+    protected SchoolClassRepository classRepository;
 
     @Autowired
     protected JwtService jwtService;
@@ -78,6 +83,17 @@ abstract class AdminUserApiTestSupport {
         school.setAddress("Test street 1");
         school.setActive(active);
         return schoolRepository.saveAndFlush(school);
+    }
+
+    /** Saves a class of the teacher's school led by the teacher. */
+    protected SchoolClass saveClass(User teacher, boolean active) {
+        SchoolClass schoolClass = new SchoolClass();
+        schoolClass.setSchool(teacher.getSchool());
+        schoolClass.setTeacher(teacher);
+        schoolClass.setName("Class " + UUID.randomUUID());
+        schoolClass.setJoinCode(UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT));
+        schoolClass.setActive(active);
+        return classRepository.saveAndFlush(schoolClass);
     }
 
     /**

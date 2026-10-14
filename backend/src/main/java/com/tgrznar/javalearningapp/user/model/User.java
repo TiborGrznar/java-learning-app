@@ -1,6 +1,7 @@
 package com.tgrznar.javalearningapp.user.model;
 
 import com.tgrznar.javalearningapp.school.School;
+import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -22,6 +23,7 @@ import java.time.Instant;
  * An application user - a student, teacher, or admin.
  * Optionally linked to a {@link School}; students/teachers are typically
  * assigned one, while an admin account may not be tied to any school.
+ * A student additionally belongs to a {@link SchoolClass} once they enroll with its join code.
  */
 @Entity
 @Table(name = "users")
@@ -56,6 +58,11 @@ public class User {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "school_id")
     private School school;
+
+    /** Null until a student enrolls with a join code. Teachers and admins are not placed into classes. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "class_id")
+    private SchoolClass schoolClass;
 
     /**
      * Soft-delete / deactivation flag. Field is named "active" rather than "isActive"

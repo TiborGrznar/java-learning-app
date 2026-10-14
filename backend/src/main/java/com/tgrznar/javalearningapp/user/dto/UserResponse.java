@@ -17,16 +17,19 @@ public record UserResponse(
         UserRole role,
         Long schoolId,
         String schoolName,
+        Long classId,
+        String className,
         boolean active,
         Instant createdAt
 ) {
 
     /**
-     * Maps an entity to the response. Touches the lazy School association,
+     * Maps an entity to the response. Touches the lazy School and class associations,
      * so it must be called inside an open transaction (open-in-view is disabled).
      */
     public static UserResponse from(User user) {
         var school = user.getSchool();
+        var schoolClass = user.getSchoolClass();
         return new UserResponse(
                 user.getId(),
                 user.getName(),
@@ -35,6 +38,8 @@ public record UserResponse(
                 user.getRole(),
                 school != null ? school.getId() : null,
                 school != null ? school.getName() : null,
+                schoolClass != null ? schoolClass.getId() : null,
+                schoolClass != null ? schoolClass.getName() : null,
                 user.isActive(),
                 user.getCreatedAt()
         );
