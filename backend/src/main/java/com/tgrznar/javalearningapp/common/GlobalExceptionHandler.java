@@ -17,13 +17,7 @@ import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundExcept
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
-import com.tgrznar.javalearningapp.schoolclass.exception.ClassNameAlreadyExistsException;
-import com.tgrznar.javalearningapp.schoolclass.exception.InvalidClassDataException;
-import com.tgrznar.javalearningapp.schoolclass.exception.SchoolClassNotFoundException;
-import com.tgrznar.javalearningapp.schoolclass.exception.AlreadyEnrolledException;
-import com.tgrznar.javalearningapp.schoolclass.exception.InvalidJoinCodeException;
-import com.tgrznar.javalearningapp.schoolclass.exception.SchoolMismatchException;
-import com.tgrznar.javalearningapp.schoolclass.exception.TooManyAttemptsException;
+import com.tgrznar.javalearningapp.schoolclass.exception.*;
 
 import com.tgrznar.javalearningapp.user.exception.InvalidUserDataException;
 import com.tgrznar.javalearningapp.user.exception.LastAdminException;
@@ -60,6 +54,7 @@ import java.util.Map;
  * ACCOUNT_DISABLED               403     account deactivated, show a message, no retry
  * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
  * MODULE_LOCKED                  403     module is locked until the previous module's quiz is passed, show it as locked, no retry
+ * NOT_ENROLLED                   403     the student has not joined a class yet, send them to the join code form (POST /api/v1/enrollments)
  * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message
  * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
  * MODULE_NOT_FOUND               404     module with the given id does not exist, show a message
@@ -314,5 +309,12 @@ public class GlobalExceptionHandler {
                 .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
                 .body(ErrorResponse.of("TOO_MANY_ATTEMPTS",
                         "Príliš veľa neúspešných pokusov o pripojenie do triedy. Skúste to znova neskôr"));
+    }
+
+    /** 403 NOT_ENROLLED: a student without a class opened the learning content, see EnrollmentGateInterceptor. */
+    @ExceptionHandler(NotEnrolledException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleNotEnrolled() {
+        return ErrorResponse.of("NOT_ENROLLED", "Najprv sa pripojte k triede pomocou kódu od učiteľa");
     }
 }
