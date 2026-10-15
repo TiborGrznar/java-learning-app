@@ -18,7 +18,6 @@ import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import com.tgrznar.javalearningapp.userprogress.UserProgress;
 import com.tgrznar.javalearningapp.userprogress.UserProgressRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -85,17 +84,6 @@ class StudentQuizApiIntegrationTest {
 
     @Autowired
     private SchoolClassRepository classRepository;
-
-    /**
-     * Modules already present in the development database would take part in the course order
-     * and change which modules are locked, so they are switched off inside the test transaction,
-     * which is rolled back at the end.
-     */
-    @BeforeEach
-    void deactivateExistingModules() {
-        moduleRepository.findAll().forEach(module -> module.setActive(false));
-        moduleRepository.flush();
-    }
 
     // ---------- access control ----------
 

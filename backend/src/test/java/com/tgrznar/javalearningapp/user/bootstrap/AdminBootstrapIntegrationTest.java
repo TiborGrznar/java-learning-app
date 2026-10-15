@@ -19,8 +19,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Tests of the first-administrator creation against the real database.
- * The development database may already contain an administrator, so every test first removes
- * all of them inside its own transaction; the rollback at the end restores them.
+ * The application context may already have created an administrator at startup (when ADMIN_EMAIL
+ * and ADMIN_PASSWORD are set in the environment), so every test first removes all of them inside
+ * its own transaction; the rollback at the end restores them.
  */
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
