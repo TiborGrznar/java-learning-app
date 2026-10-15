@@ -5,14 +5,15 @@ import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -57,6 +58,9 @@ abstract class AdminClassApiTestSupport {
     protected SchoolClassRepository classRepository;
 
     @Autowired
+    protected TestUsers testUsers;
+
+    @Autowired
     protected JwtService jwtService;
 
     protected ResultActions asAdmin(MockHttpServletRequestBuilder request) throws Exception {
@@ -86,16 +90,7 @@ abstract class AdminClassApiTestSupport {
     }
 
     protected User saveUser(UserRole role, School school, boolean active) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname("Novak");
-        user.setEmail("user-" + UUID.randomUUID() + "@example.com");
-        // Not a valid BCrypt hash: these users never log in, they only get a token.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        user.setSchool(school);
-        user.setActive(active);
-        return userRepository.saveAndFlush(user);
+        return testUsers.user(role).school(school).active(active).save();
     }
 
     protected User saveTeacher(School school) {
