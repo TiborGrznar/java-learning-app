@@ -10,6 +10,8 @@ import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -26,6 +28,7 @@ import java.util.UUID;
  * names are unique per test (UUID) and each test is rolled back.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @AutoConfigureMockMvc
 @Transactional
 abstract class AdminUserApiTestSupport {

@@ -6,6 +6,8 @@ import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * all of them inside its own transaction; the rollback at the end restores them.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @Transactional
 class AdminBootstrapIntegrationTest {
 
