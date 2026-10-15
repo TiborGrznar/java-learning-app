@@ -1,8 +1,6 @@
 package com.tgrznar.javalearningapp.testsupport;
 
-import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
-import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -25,13 +23,10 @@ class TestUsersTest {
     private TestUsers testUsers;
 
     @Autowired
+    private EnrolledClassFactory enrolledClasses;
+
+    @Autowired
     private UserRepository userRepository;
-
-    @Autowired
-    private SchoolRepository schoolRepository;
-
-    @Autowired
-    private SchoolClassRepository classRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -117,6 +112,6 @@ class TestUsersTest {
     }
 
     private SchoolClass enrolledClass() {
-        return new EnrolledClassFactory(userRepository, schoolRepository, classRepository).saveClass(true);
+        return enrolledClasses.saveClass(true);
     }
 }

@@ -5,8 +5,8 @@ import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.user.model.User;
-import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
+import org.springframework.boot.test.context.TestComponent;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -16,16 +16,17 @@ import java.util.UUID;
  * Learning endpoints are open only to students who joined a class. Everything is unique per call (UUID)
  * and lives in the test transaction, which is rolled back.
  */
-public final class EnrolledClassFactory {
+@TestComponent
+public class EnrolledClassFactory {
 
-    private final UserRepository userRepository;
+    private final TestUsers testUsers;
     private final SchoolRepository schoolRepository;
     private final SchoolClassRepository classRepository;
 
-    public EnrolledClassFactory(UserRepository userRepository,
+    public EnrolledClassFactory(TestUsers testUsers,
                                 SchoolRepository schoolRepository,
                                 SchoolClassRepository classRepository) {
-        this.userRepository = userRepository;
+        this.testUsers = testUsers;
         this.schoolRepository = schoolRepository;
         this.classRepository = classRepository;
     }
@@ -38,16 +39,7 @@ public final class EnrolledClassFactory {
         school.setActive(true);
         school = schoolRepository.saveAndFlush(school);
 
-        User teacher = new User();
-        teacher.setName("Petra");
-        teacher.setSurname("Ucitelova");
-        teacher.setEmail("teacher-" + UUID.randomUUID() + "@example.com");
-        // Not a valid BCrypt hash: this user never logs in.
-        teacher.setPasswordHash("not-a-real-hash");
-        teacher.setRole(UserRole.TEACHER);
-        teacher.setSchool(school);
-        teacher.setActive(true);
-        teacher = userRepository.saveAndFlush(teacher);
+        User teacher = testUsers.teacher(school);
 
         SchoolClass schoolClass = new SchoolClass();
         schoolClass.setSchool(school);
@@ -56,5 +48,10 @@ public final class EnrolledClassFactory {
         schoolClass.setJoinCode(UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT));
         schoolClass.setActive(active);
         return classRepository.saveAndFlush(schoolClass);
+    }
+
+    /** A student who already joined a new active class (and the school of that class). */
+    public User saveEnrolledStudent() {
+        return testUsers.user(UserRole.STUDENT).inClass(saveClass(true)).save();
     }
 }

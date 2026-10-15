@@ -3,12 +3,9 @@ package com.tgrznar.javalearningapp.learning.api;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.module.CourseModule;
 import com.tgrznar.javalearningapp.module.CourseModuleRepository;
-import com.tgrznar.javalearningapp.school.SchoolRepository;
-import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
-import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.testsupport.EnrolledClassFactory;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.user.model.User;
-import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import com.tgrznar.javalearningapp.userprogress.UserProgress;
 import com.tgrznar.javalearningapp.userprogress.UserProgressRepository;
@@ -49,9 +46,6 @@ class StudentTheoryApiIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
     private CourseModuleRepository moduleRepository;
 
     @Autowired
@@ -61,10 +55,10 @@ class StudentTheoryApiIntegrationTest {
     private JwtService jwtService;
 
     @Autowired
-    private SchoolRepository schoolRepository;
+    private TestUsers testUsers;
 
     @Autowired
-    private SchoolClassRepository classRepository;
+    private EnrolledClassFactory enrolledClasses;
 
     // ---------- access control ----------
 
@@ -228,21 +222,10 @@ class StudentTheoryApiIntegrationTest {
     }
 
     private User saveUser(UserRole role) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname("Novak");
-        user.setEmail(("user-" + UUID.randomUUID() + "@example.com").toLowerCase(Locale.ROOT));
-        // Not a valid BCrypt hash: these users never log in, they only get a token.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        if (role == UserRole.STUDENT) {
-            // Learning endpoints are open only to students who joined a class.
-            SchoolClass schoolClass = new EnrolledClassFactory(userRepository, schoolRepository, classRepository)
-                    .saveClass(true);
-            user.setSchool(schoolClass.getSchool());
-            user.setSchoolClass(schoolClass);
-        }
-        return userRepository.saveAndFlush(user);
+        // Learning endpoints are open only to students who joined a class.
+        return role == UserRole.STUDENT
+                ? enrolledClasses.saveEnrolledStudent()
+                : testUsers.user(role).save();
     }
 
     private CourseModule saveModule(String title, int orderNumber, boolean active) {

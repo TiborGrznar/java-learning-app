@@ -6,11 +6,11 @@ import org.springframework.context.annotation.Import;
 
 /**
  * Starts the shared containers and points the datasource at them. It also registers the shared
- * test fixtures ({@link TestUsers}). Import it into an integration test with
- * {@code @Import(TestcontainersConfiguration.class)}.
+ * test fixtures ({@link TestUsers}, {@link EnrolledClassFactory}). Import it into an integration test
+ * with {@code @Import(TestcontainersConfiguration.class)}.
  */
 @TestConfiguration(proxyBeanMethods = false)
 @ImportTestcontainers(SharedContainers.class)
-@Import(TestUsers.class)
+@Import({TestUsers.class, EnrolledClassFactory.class})
 public class TestcontainersConfiguration {
 }
