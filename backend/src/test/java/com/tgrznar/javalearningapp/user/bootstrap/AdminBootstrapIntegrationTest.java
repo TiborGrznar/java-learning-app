@@ -6,6 +6,8 @@ import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,10 +19,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Tests of the first-administrator creation against the real database.
- * The development database may already contain an administrator, so every test first removes
- * all of them inside its own transaction; the rollback at the end restores them.
+ * The application context may already have created an administrator at startup (when ADMIN_EMAIL
+ * and ADMIN_PASSWORD are set in the environment), so every test first removes all of them inside
+ * its own transaction; the rollback at the end restores them.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @Transactional
 class AdminBootstrapIntegrationTest {
 

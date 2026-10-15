@@ -139,7 +139,7 @@ Architecture: three layers (presentation, application, data) with role-based acc
 ## Prerequisites
 
 - JDK 25
-- Docker (for the local MySQL container)
+- Docker (for the local MySQL container and for the tests, which start their own MySQL container)
 - Git
 
 Maven is not required, the repository contains the Maven Wrapper.
@@ -204,11 +204,11 @@ cd backend
 .\mvnw.cmd test
 ```
 
-The tests need the database container and the environment variables from step 3 (including `JWT_SECRET`). The integration tests run against the local development database, every test is rolled back, so no data is left behind. Flyway migrations are the exception: running the tests brings the development database to the latest schema version.
+The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Every test is rolled back, so the tests do not depend on each other. The first run is slower because Docker pulls the images. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
 
 ## Continuous integration
 
-GitHub Actions (`.github/workflows/ci.yml`) builds the backend and runs all tests on every push to any branch, on pull requests to `main` and on demand. The job uses a MySQL 8 service container with throwaway credentials and a `JWT_SECRET` generated for each run, so no repository secrets are needed. A newer run of the same branch or pull request cancels the older one, runs on `main` are never cancelled.
+GitHub Actions (`.github/workflows/ci.yml`) builds the backend and runs all tests on every push to any branch, on pull requests to `main` and on demand. The job needs no database service and no secrets: the tests start their own MySQL container with Testcontainers (Docker is preinstalled on the runner) and use the test-only configuration from `src/test/resources`. A newer run of the same branch or pull request cancels the older one, runs on `main` are never cancelled.
 
 ## First administrator
 
@@ -267,7 +267,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   └── resources/
 │       │       ├── application.yaml
 │       │       └── db/migration/ Flyway migrations (V1 to V5)
-│       └── test/             unit and integration tests, testsupport/ holds shared test fixtures
+│       └── test/             unit and integration tests, testsupport/ holds the Testcontainers setup and shared fixtures
 ├── docker-compose.yml    local MySQL
 └── .env.example          template of required environment variables
 ```

@@ -7,6 +7,8 @@ import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -26,10 +28,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration tests of /api/v1/schools: role checks, validation, duplicates and the happy paths.
- * School names are unique per test (UUID) so they never clash with data in the dev database.
- * Each test runs in a transaction that is rolled back.
+ * School names are unique per test (UUID) so the tests never depend on each other's data. * Each test runs in a transaction that is rolled back.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @AutoConfigureMockMvc
 @Transactional
 class SchoolApiIntegrationTest {

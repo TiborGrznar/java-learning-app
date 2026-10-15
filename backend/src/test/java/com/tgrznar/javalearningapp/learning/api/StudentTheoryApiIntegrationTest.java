@@ -12,10 +12,11 @@ import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import com.tgrznar.javalearningapp.userprogress.UserProgress;
 import com.tgrznar.javalearningapp.userprogress.UserProgressRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -37,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Test data uses unique e-mails and is rolled back after each test.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @AutoConfigureMockMvc
 @Transactional
 class StudentTheoryApiIntegrationTest {
@@ -63,17 +65,6 @@ class StudentTheoryApiIntegrationTest {
 
     @Autowired
     private SchoolClassRepository classRepository;
-
-    /**
-     * Modules already present in the development database would take part in the course order
-     * and change which modules are locked, so they are switched off inside the test transaction,
-     * which is rolled back at the end.
-     */
-    @BeforeEach
-    void deactivateExistingModules() {
-        moduleRepository.findAll().forEach(module -> module.setActive(false));
-        moduleRepository.flush();
-    }
 
     // ---------- access control ----------
 

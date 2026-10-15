@@ -1,0 +1,10 @@
+# Test-only settings, layered on top of application.yaml. The tests run under the default "dev"
+# profile, so this file lets them start without any environment variables.
+spring:
+  datasource:
+    # Never used: the connection details come from the Testcontainers MySQL container.
+    password: unused-the-container-provides-the-connection
+app:
+  jwt:
+    # Throwaway signing key for tests only (base64, 42 bytes). Never use it outside the tests.
+    secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQtZG8tbm90LXVzZS1lbHNld2hlcmUh
