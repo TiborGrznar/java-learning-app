@@ -10,12 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +39,9 @@ class UserApiIntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private TestUsers testUsers;
 
     @Autowired
     private SchoolRepository schoolRepository;
@@ -124,16 +126,7 @@ class UserApiIntegrationTest {
     // ---------- helpers ----------
 
     private User saveUser(UserRole role, School school, boolean active) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname("Novak");
-        user.setEmail("user-" + UUID.randomUUID() + "@example.com");
-        // Not a valid BCrypt hash: these users never log in, they only get a token.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        user.setSchool(school);
-        user.setActive(active);
-        return userRepository.saveAndFlush(user);
+        return testUsers.user(role).school(school).active(active).save();
     }
 
     private String bearer(User user) {

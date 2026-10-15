@@ -2,12 +2,12 @@ package com.tgrznar.javalearningapp.school;
 
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.user.model.User;
-import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -42,7 +42,7 @@ class SchoolApiIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private UserRepository userRepository;
+    private TestUsers testUsers;
 
     @Autowired
     private SchoolRepository schoolRepository;
@@ -290,14 +290,7 @@ class SchoolApiIntegrationTest {
     }
 
     private User saveUser(UserRole role) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname("Novak");
-        user.setEmail("user-" + UUID.randomUUID() + "@example.com");
-        // Not a valid BCrypt hash: these users never log in, they only get a token.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        return userRepository.saveAndFlush(user);
+        return testUsers.user(role).save();
     }
 
     private School saveSchool(String name, boolean active) {
