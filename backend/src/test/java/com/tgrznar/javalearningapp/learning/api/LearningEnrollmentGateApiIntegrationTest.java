@@ -2,27 +2,22 @@ package com.tgrznar.javalearningapp.learning.api;
 
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.school.School;
-import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
-import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.testsupport.EnrolledClassFactory;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import com.tgrznar.javalearningapp.user.model.User;
-import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Locale;
-import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -49,13 +44,10 @@ class LearningEnrollmentGateApiIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private UserRepository userRepository;
+    private TestUsers testUsers;
 
     @Autowired
-    private SchoolRepository schoolRepository;
-
-    @Autowired
-    private SchoolClassRepository classRepository;
+    private EnrolledClassFactory enrolledClasses;
 
     @Autowired
     private JwtService jwtService;
@@ -69,7 +61,7 @@ class LearningEnrollmentGateApiIntegrationTest {
 
     @Test
     void list_studentWithSchoolButWithoutClass_returns403NotEnrolled() throws Exception {
-        School school = factory().saveClass(true).getSchool();
+        School school = enrolledClasses.saveClass(true).getSchool();
 
         asUser(get(MODULES_URL), saveStudent(school, null))
                 .andExpect(status().isForbidden())
@@ -106,7 +98,7 @@ class LearningEnrollmentGateApiIntegrationTest {
 
     @Test
     void list_studentInActiveClass_returns200() throws Exception {
-        SchoolClass schoolClass = factory().saveClass(true);
+        SchoolClass schoolClass = enrolledClasses.saveClass(true);
 
         asUser(get(MODULES_URL), saveStudent(schoolClass.getSchool(), schoolClass))
                 .andExpect(status().isOk());
@@ -114,7 +106,7 @@ class LearningEnrollmentGateApiIntegrationTest {
 
     @Test
     void list_studentInDeactivatedClass_keepsAccess() throws Exception {
-        SchoolClass schoolClass = factory().saveClass(false);
+        SchoolClass schoolClass = enrolledClasses.saveClass(false);
 
         asUser(get(MODULES_URL), saveStudent(schoolClass.getSchool(), schoolClass))
                 .andExpect(status().isOk());
@@ -153,20 +145,11 @@ class LearningEnrollmentGateApiIntegrationTest {
         return mockMvc.perform(request.header("Authorization", "Bearer " + token));
     }
 
-    private EnrolledClassFactory factory() {
-        return new EnrolledClassFactory(userRepository, schoolRepository, classRepository);
-    }
-
     private User saveStudent(School school, SchoolClass schoolClass) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname("Novak");
-        user.setEmail(("user-" + UUID.randomUUID() + "@example.com").toLowerCase(Locale.ROOT));
-        // Not a valid BCrypt hash: these users never log in, they only get a token.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(UserRole.STUDENT);
-        user.setSchool(school);
-        user.setSchoolClass(schoolClass);
-        return userRepository.saveAndFlush(user);
+        TestUsers.Builder student = testUsers.user(UserRole.STUDENT).school(school);
+        if (schoolClass != null) {
+            student.inClass(schoolClass);
+        }
+        return student.save();
     }
 }

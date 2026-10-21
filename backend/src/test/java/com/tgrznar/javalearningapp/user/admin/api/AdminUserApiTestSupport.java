@@ -5,14 +5,15 @@ import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
+import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -48,6 +49,9 @@ abstract class AdminUserApiTestSupport {
     protected SchoolClassRepository classRepository;
 
     @Autowired
+    protected TestUsers testUsers;
+
+    @Autowired
     protected JwtService jwtService;
 
     @Autowired
@@ -64,20 +68,16 @@ abstract class AdminUserApiTestSupport {
     }
 
     protected User saveUser(String email, UserRole role) {
-        return saveUser(email, role, null, "Novak", true);
+        return testUsers.user(role).email(email).save();
     }
 
     protected User saveUser(String email, UserRole role, School school, String surname, boolean active) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname(surname);
-        user.setEmail(email);
-        // Not a valid BCrypt hash: these users never log in, they only get a token.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        user.setSchool(school);
-        user.setActive(active);
-        return userRepository.saveAndFlush(user);
+        return testUsers.user(role)
+                .email(email)
+                .school(school)
+                .surname(surname)
+                .active(active)
+                .save();
     }
 
     protected School saveSchool(boolean active) {

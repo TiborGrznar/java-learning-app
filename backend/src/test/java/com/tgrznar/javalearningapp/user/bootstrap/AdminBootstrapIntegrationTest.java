@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,9 @@ class AdminBootstrapIntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private TestUsers testUsers;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -106,14 +110,7 @@ class AdminBootstrapIntegrationTest {
     }
 
     private void saveUser(String email, UserRole role) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname("Novak");
-        user.setEmail(email);
-        // Not a valid BCrypt hash: these users never log in.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        userRepository.saveAndFlush(user);
+        testUsers.user(role).email(email).save();
     }
 
     private String uniqueEmail() {

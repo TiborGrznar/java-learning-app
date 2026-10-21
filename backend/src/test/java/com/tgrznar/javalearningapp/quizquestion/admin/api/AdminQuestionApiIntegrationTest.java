@@ -7,12 +7,12 @@ import com.tgrznar.javalearningapp.quizquestion.QuizOption;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestion;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestionRepository;
 import com.tgrznar.javalearningapp.user.model.User;
-import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -20,9 +20,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Locale;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -52,7 +49,7 @@ class AdminQuestionApiIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private UserRepository userRepository;
+    private TestUsers testUsers;
 
     @Autowired
     private CourseModuleRepository moduleRepository;
@@ -407,14 +404,7 @@ class AdminQuestionApiIntegrationTest {
     }
 
     private User saveUser(UserRole role) {
-        User user = new User();
-        user.setName("Jano");
-        user.setSurname("Novak");
-        user.setEmail(("user-" + UUID.randomUUID() + "@example.com").toLowerCase(Locale.ROOT));
-        // Not a valid BCrypt hash: these users never log in, they only get a token.
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        return userRepository.saveAndFlush(user);
+        return testUsers.user(role).save();
     }
 
     private CourseModule saveModule(String title, boolean active) {
