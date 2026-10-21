@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,8 @@ class SchoolClassRepositoryTest {
     private SchoolRepository schoolRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TestUsers testUsers;
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -189,14 +192,7 @@ class SchoolClassRepositoryTest {
     }
 
     private User createUser(UserRole role, School school) {
-        User user = new User();
-        user.setName("Test");
-        user.setSurname("User");
-        user.setEmail(UUID.randomUUID() + "@example.com");
-        user.setPasswordHash("not-a-real-hash");
-        user.setRole(role);
-        user.setSchool(school);
-        return userRepository.saveAndFlush(user);
+        return testUsers.user(role).school(school).save();
     }
 
     private SchoolClass newClass(School school, User teacher, String name, String joinCode) {
