@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: runner
+
+server:
+  # Localhost on purpose: only the backend on the same machine may reach the runner.
+  address: ${RUNNER_BIND_ADDRESS:127.0.0.1}
+  port: ${RUNNER_PORT:8081}
+
+runner:
+  # Shared secret the backend sends in the X-Runner-Token header (at least 32 characters).
+  # Required, no default on purpose.
+  token: ${RUNNER_TOKEN}
