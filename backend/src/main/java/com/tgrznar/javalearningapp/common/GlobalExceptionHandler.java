@@ -25,16 +25,21 @@ import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
 import com.tgrznar.javalearningapp.user.exception.TeacherLeadsClassesException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
 import com.tgrznar.javalearningapp.user.exception.UserNotDeletableException;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import lombok.extern.slf4j.Slf4j;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -76,12 +81,17 @@ import java.util.Map;
  * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
  * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
+ * BAD_REQUEST                    400     a path or query value has the wrong type (e.g. text where a number is expected), a client bug
+ * NOT_FOUND, METHOD_NOT_ALLOWED, ...      framework errors keep their HTTP status, code is the status name (UNSUPPORTED_MEDIA_TYPE, ...), a client bug
+ * INTERNAL_ERROR                 500     unexpected server error, show a generic message, details are only in the server log
  * </pre>
  * <p>
  * UNAUTHENTICATED and ACCESS_DENIED are produced by the security filter chain, not by this class:
  * see JsonAuthenticationEntryPoint and JsonAccessDeniedHandler in auth.security.
  */
+
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     /** 400 VALIDATION_ERROR: Bean Validation failed; fieldErrors maps field name to message. */
@@ -326,5 +336,40 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleNotEnrolled() {
         return ErrorResponse.of("NOT_ENROLLED", "Najprv sa pripojte k triede pomocou kódu od učiteľa");
+    }
+
+
+    /** 400 BAD_REQUEST: a path or query value has the wrong type, e.g. /api/v1/admin/users/abc. */
+    @ExceptionHandler(TypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleTypeMismatch() {
+        return ErrorResponse.of("BAD_REQUEST", "Neplatná požiadavka");
+    }
+
+    /**
+     * Last resort for anything not handled above. The details go to the log only, the client
+     * gets a generic 500 so no stack trace, SQL or class name leaks out.
+     * <p>
+     * Two kinds of exceptions must not end up as 500:
+     * security exceptions thrown by @PreAuthorize are rethrown so the security filter chain answers
+     * 401 or 403 as before, and framework exceptions that carry their own HTTP status (405 for a wrong
+     * method, 404 for an unknown path, 415, ...) keep that status.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) throws Exception {
+        if (ex instanceof AccessDeniedException || ex instanceof AuthenticationException) {
+            throw ex;
+        }
+        if (ex instanceof org.springframework.web.ErrorResponse framework) {
+            HttpStatusCode status = framework.getStatusCode();
+            HttpStatus known = HttpStatus.resolve(status.value());
+            String code = known != null ? known.name() : "REQUEST_ERROR";
+            return ResponseEntity.status(status)
+                    .headers(framework.getHeaders())
+                    .body(ErrorResponse.of(code, "Neplatná požiadavka"));
+        }
+        log.error("Unhandled exception", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ErrorResponse.of("INTERNAL_ERROR", "Neočakávaná chyba servera"));
     }
 }
