@@ -2,6 +2,7 @@ package com.tgrznar.javalearningapp.auth.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -31,7 +32,14 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        // Public endpoints are listed one by one on purpose. A wildcard under /auth/ would
+                        // silently expose any endpoint added there later (a password change, a profile...).
+                        // A new public endpoint must be added here and covered by AuthPathsSecurityIntegrationTest.
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/v1/auth/register",
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout").permitAll()
                         // Error dispatches must stay open, otherwise validation errors turn into 401.
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
