@@ -6,11 +6,18 @@
 #   docker inspect --format "{{index .RepoDigests 0}}" eclipse-temurin:25-jdk-noble
 FROM eclipse-temurin:25-jdk-noble
 
-# Fixed unprivileged uid/gid; the runner starts the container with --user 10001:10001 as well.
-RUN groupadd --gid 10001 sandbox \
- && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sandbox \
- && mkdir -p /work /opt/jla \
- && chown 10001:10001 /work
+# Two unprivileged uids, used by the launcher through setpriv (see launcher.sh):
+#   10002 runs the student's program, 10003 runs the compiler and owns /build.
+# The image has no USER on purpose: the launcher starts as root, and the runner starts the container
+# with every capability dropped except SETUID, SETGID and KILL (and no-new-privileges).
+RUN groupadd --gid 10002 student \
+ && useradd --uid 10002 --gid 10002 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin student \
+ && groupadd --gid 10003 compiler \
+ && useradd --uid 10003 --gid 10003 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin compiler \
+ && mkdir -p /work /build /opt/jla
+
+# Fail the build early if the tool the launcher needs to drop privileges is missing.
+RUN setpriv --version
 
 # Drop setuid/setgid bits (belt and braces; the runner also starts containers with no-new-privileges).
 RUN find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
@@ -19,6 +26,6 @@ RUN find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 # (.gitattributes also forces LF).
 COPY launcher.sh /opt/jla/launcher.sh
 RUN sed -i '1s/^\xEF\xBB\xBF//; s/\r$//' /opt/jla/launcher.sh && chmod 0555 /opt/jla/launcher.sh
-USER 10001:10001
+
 WORKDIR /work
 ENTRYPOINT ["/opt/jla/launcher.sh"]

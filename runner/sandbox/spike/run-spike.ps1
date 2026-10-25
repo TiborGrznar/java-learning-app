@@ -23,6 +23,8 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+# `powershell -File` passes "a,b,c" as one string; split it so lists work both ways.
+$Sample = @($Sample | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $sandboxDir = Split-Path -Parent $PSScriptRoot
 $samplesDir = Join-Path $PSScriptRoot 'samples'
 $workDir = Join-Path ([IO.Path]::GetTempPath()) ('jla-spike-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -35,19 +37,25 @@ if (-not $SkipBuild) {
 }
 
 # The limits the runner will apply to every submission. Keep in sync with docs when they change.
+# The container starts as root but keeps only the three capabilities the launcher needs to hand the
+# student's program to an unprivileged uid; see launcher.sh.
 $limits = @(
     '--network none',
     '--read-only',
     '--cap-drop ALL',
+    '--cap-add SETUID',
+    '--cap-add SETGID',
+    '--cap-add KILL',
     '--security-opt no-new-privileges',
-    '--user 10001:10001',
+    '--user 0:0',
     '--memory 512m',
     '--memory-swap 512m',
     '--cpus 1',
     '--pids-limit 128',
     '--ulimit nofile=256:256',
-    '--tmpfs /work:rw,nosuid,nodev,noexec,size=32m,uid=10001,gid=10001,mode=0700',
-    '--tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700',
+    '--tmpfs /work:rw,nosuid,nodev,noexec,size=32m,mode=0711',
+    '--tmpfs /build:rw,nosuid,nodev,noexec,size=16m,uid=10003,gid=10003,mode=0755',
+    '--tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,mode=1777',
     '-e COMPILE_TIMEOUT_S=10',
     '-e RUN_TIMEOUT_S=5',
     '-e MAX_OUTPUT_BYTES=65536'

@@ -12,7 +12,7 @@ public class Solution {
             files.forEach(p -> System.out.println("visible: " + p));
         }
         System.out.println(Files.readString(Path.of("/proc/self/status")).lines()
-                .filter(l -> l.startsWith("Cap") || l.startsWith("NoNewPrivs") || l.startsWith("Seccomp"))
+                .filter(l -> l.startsWith("Uid") || l.startsWith("Gid") || l.startsWith("Cap") || l.startsWith("NoNewPrivs") || l.startsWith("Seccomp"))
                 .toList());
     }
 }
