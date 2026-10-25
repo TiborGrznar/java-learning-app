@@ -31,5 +31,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    ignore:
+      # The MySQL version is a project decision (open-decisions.md) and must match the image
+      # used by Testcontainers. Remove this rule on the branch that moves to MySQL 8.4 LTS.
+      - dependency-name: mysql
     commit-message:
       prefix: "chore(deps)"
