@@ -68,7 +68,7 @@ All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires
 | GET | `/learning/modules/{id}` | `STUDENT` in a class | Module with the theory text and progress flags. A locked module answers `403 MODULE_LOCKED` |
 | POST | `/learning/modules/{id}/theory-completed` | `STUDENT` in a class | Marks the theory as read and returns the module |
 | GET | `/learning/modules/{moduleId}/quiz` | `STUDENT` in a class | Draws a quiz of up to ten questions and a quiz token (`Cache-Control: no-store`). The theory must be read first |
-| POST | `/learning/modules/{moduleId}/quiz/submissions` | `STUDENT` in a class | Evaluates the answers of a drawn quiz |
+| POST | `/learning/modules/{moduleId}/quiz/submissions` | `STUDENT` in a class | Evaluates the answers of a drawn quiz. A quiz token works for one submission only. After a failed attempt the answers are marked right or wrong, the correct options are shown after a pass |
 
 Rules of user management: an administrator cannot change their own role or deactivate themselves, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them. There is no password change yet, so the temporary password of a new teacher stays valid until that is implemented.
 
@@ -126,12 +126,13 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 409 | `THEORY_NOT_COMPLETED` | The theory of the module has not been marked as read yet |
 | 409 | `QUIZ_NOT_AVAILABLE` | The module has no quiz questions |
 | 409 | `QUIZ_OUTDATED` | The quiz expired or one of its questions was deleted, load it again |
+| 409 | `QUIZ_ALREADY_SUBMITTED` | The quiz token was already used for a submission (double click, retry), load the quiz again |
 | 429 | `TOO_MANY_ATTEMPTS` | Too many failed enrollment attempts, the `Retry-After` header says how many seconds to wait |
 
 ## Tech stack
 
 - **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, Lombok, Maven
-- **Database:** MySQL 8 (Docker for local development), Flyway migrations
+- **Database:** MySQL 8.4 LTS (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
 
 Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
@@ -204,7 +205,7 @@ cd backend
 .\mvnw.cmd test
 ```
 
-The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Every test is rolled back, so the tests do not depend on each other. The first run is slower because Docker pulls the images. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
+The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8.4 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Every test is rolled back, so the tests do not depend on each other. The first run is slower because Docker pulls the images. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
 
 ## Continuous integration
 
@@ -266,7 +267,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   └── codingtask/ quizresult/ codingresult/ userprogress/
 │       │   └── resources/
 │       │       ├── application.yaml
-│       │       └── db/migration/ Flyway migrations (V1 to V5)
+│       │       └── db/migration/ Flyway migrations (V1 to V6)
 │       └── test/             unit and integration tests, testsupport/ holds the Testcontainers setup and shared fixtures
 ├── docker-compose.yml    local MySQL
 └── .env.example          template of required environment variables
@@ -276,7 +277,7 @@ Tests lie in the package of the tested class (they need package-private access i
 
 ## Database migrations
 
-Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V6__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
+Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V7__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
 
 ## Development workflow
 

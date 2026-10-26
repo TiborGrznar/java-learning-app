@@ -48,6 +48,13 @@ public class QuizResult {
     @Column(name = "max_score", nullable = false)
     private int maxScore;
 
+    /**
+     * Id (jti) of the quiz token this attempt was submitted with. The database key on this column is
+     * unique, so a quiz token works for one submission only. Null for attempts stored before V6.
+     */
+    @Column(name = "quiz_token_id", length = 36)
+    private String quizTokenId;
+
     /** Set automatically by Hibernate at insert time - represents when the attempt was submitted. */
     @CreationTimestamp
     @Column(name = "completed_at", nullable = false, updatable = false)
