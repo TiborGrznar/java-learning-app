@@ -32,8 +32,9 @@ updates:
       interval: weekly
       day: monday
     ignore:
-      # The MySQL version is a project decision (open-decisions.md) and must match the image
-      # used by Testcontainers. Remove this rule on the branch that moves to MySQL 8.4 LTS.
+      # Stay on the MySQL 8.4 LTS line. A new major version (9.x, 26.x) is a project decision
+      # (open-decisions.md) and must be changed together with the Testcontainers image.
       - dependency-name: mysql
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
