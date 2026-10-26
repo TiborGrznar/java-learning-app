@@ -9,6 +9,7 @@ import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.learning.exception.ModuleLockedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizTokenException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizAnswersException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.QuizAlreadySubmittedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.QuizNotAvailableException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.QuizOutdatedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.TheoryNotCompletedException;
@@ -81,6 +82,7 @@ import java.util.Map;
  * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
  * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
+ * QUIZ_ALREADY_SUBMITTED         409     the quiz token was already used for a submission (double click, retry, replay), load the quiz again
  * BAD_REQUEST                    400     a path or query value has the wrong type (e.g. text where a number is expected), a client bug
  * NOT_FOUND, METHOD_NOT_ALLOWED, ...      framework errors keep their HTTP status, code is the status name (UNSUPPORTED_MEDIA_TYPE, ...), a client bug
  * INTERNAL_ERROR                 500     unexpected server error, show a generic message, details are only in the server log
@@ -230,6 +232,14 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleQuizOutdated() {
         return ErrorResponse.of("QUIZ_OUTDATED", "Kvíz sa zmenil alebo vypršal, načítajte ho znova");
+    }
+
+
+    /** 409 QUIZ_ALREADY_SUBMITTED: a quiz token works for one submission only. */
+    @ExceptionHandler(QuizAlreadySubmittedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleQuizAlreadySubmitted() {
+        return ErrorResponse.of("QUIZ_ALREADY_SUBMITTED", "Tento kvíz už bol odoslaný, načítajte ho znova");
     }
 
     /** 400 INVALID_QUIZ_TOKEN: the quiz token is malformed, tampered with, or issued for someone else. */

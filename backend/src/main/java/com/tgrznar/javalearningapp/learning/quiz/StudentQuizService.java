@@ -11,6 +11,7 @@ import com.tgrznar.javalearningapp.learning.quiz.dto.QuizResultResponse;
 import com.tgrznar.javalearningapp.learning.quiz.dto.QuizSubmissionRequest;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizAnswersException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizTokenException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.QuizAlreadySubmittedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.QuizNotAvailableException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.QuizOutdatedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.TheoryNotCompletedException;
@@ -18,6 +19,8 @@ import com.tgrznar.javalearningapp.quizquestion.QuizOption;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestion;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.NestedExceptionUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -34,12 +37,20 @@ import java.util.stream.Collectors;
  * Loading and submitting a module quiz (UC-06, UC-07). A quiz is drawn at random from the module's
  * question bank and the order of the questions and of the options is shuffled on every load.
  * <p>
+ * A quiz token works for one submission only: its id is stored with the result under a unique key,
+ * so a second submission (a replay, or two requests at the same moment) is rejected by the database
+ * with 409 QUIZ_ALREADY_SUBMITTED, and the student has to load a new quiz. After a failed attempt the
+ * response shows which answers were wrong but not the correct options, these come with a pass.
+ * <p>
  * Deliberately not @Transactional: creating the progress row relies on running outside a transaction,
  * the result and the quizCompleted flag are written together in QuizAttemptRecorder.
  */
 @Service
 @RequiredArgsConstructor
 public class StudentQuizService {
+
+    /** Name of the unique key on quiz_results.quiz_token_id, see V6. */
+    private static final String TOKEN_KEY_NAME = "uq_quiz_results_quiz_token_id";
 
     private final ModuleAccessService accessService;
     private final ModuleProgressService progressService;
@@ -70,7 +81,8 @@ public class StudentQuizService {
     public QuizResultResponse submit(Long userId, Long moduleId, QuizSubmissionRequest request) {
         ModuleAccessService.ModuleAccess access = requireQuizAccess(userId, moduleId);
 
-        List<Long> drawnIds = tokenService.verify(request.quizToken(), userId, moduleId);
+        VerifiedQuizToken token = tokenService.verify(request.quizToken(), userId, moduleId);
+        List<Long> drawnIds = token.questionIds();
         if (drawnIds.isEmpty()) {
             throw new InvalidQuizTokenException();
         }
@@ -100,9 +112,34 @@ public class StudentQuizService {
         boolean passed = score * 100 >= properties.passThresholdPercent() * maxScore;
 
         progressService.ensureProgress(userId, access);
-        attemptRecorder.record(userId, moduleId, score, maxScore, passed);
+        // The result is built only after the token was used up, so a rejected submission shows nothing.
+        recordAttempt(userId, moduleId, token.id(), score, maxScore, passed);
 
-        return new QuizResultResponse(score, maxScore, score * 100 / maxScore, passed, results);
+        List<QuizAnswerResult> shown = passed
+                ? results
+                : results.stream().map(QuizAnswerResult::withoutCorrectOption).toList();
+        return new QuizResultResponse(score, maxScore, score * 100 / maxScore, passed, shown);
+    }
+
+    /**
+     * Writes the attempt together with the token id. The unique key on the token id is the single point
+     * that decides which of two requests with the same token wins, it works even when both arrive at once.
+     */
+    private void recordAttempt(Long userId, Long moduleId, String tokenId, int score, int maxScore, boolean passed) {
+        try {
+            attemptRecorder.record(userId, moduleId, tokenId, score, maxScore, passed);
+        } catch (DataIntegrityViolationException e) {
+            if (isDuplicateTokenViolation(e)) {
+                throw new QuizAlreadySubmittedException();
+            }
+            throw e;
+        }
+    }
+
+    /** True when the unique key on the token id rejected the insert. Any other integrity error is a real fault. */
+    static boolean isDuplicateTokenViolation(Throwable error) {
+        String message = NestedExceptionUtils.getMostSpecificCause(error).getMessage();
+        return message != null && message.contains(TOKEN_KEY_NAME);
     }
 
     /** The module must be unlocked and its theory read before the quiz can be loaded or submitted. */
