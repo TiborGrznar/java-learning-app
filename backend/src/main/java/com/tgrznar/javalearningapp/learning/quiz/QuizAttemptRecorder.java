@@ -15,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
  * transaction so that no half-written state remains. It is a separate bean because a transactional
  * method called from inside its own class would not run in a transaction. The progress row has to
  * exist already, the caller creates it beforehand.
+ * <p>
+ * The result row carries the id of the quiz token. Its unique key rejects a second submission with the
+ * same token: the insert then throws DataIntegrityViolationException and nothing is stored, the caller
+ * decides what that means (see StudentQuizService).
  */
 @Service
 @RequiredArgsConstructor
@@ -26,10 +30,11 @@ public class QuizAttemptRecorder {
     private final CourseModuleRepository moduleRepository;
 
     @Transactional
-    public void record(Long userId, Long moduleId, int score, int maxScore, boolean passed) {
+    public void record(Long userId, Long moduleId, String quizTokenId, int score, int maxScore, boolean passed) {
         QuizResult result = new QuizResult();
         result.setUser(userRepository.getReferenceById(userId));
         result.setModule(moduleRepository.getReferenceById(moduleId));
+        result.setQuizTokenId(quizTokenId);
         result.setScore(score);
         result.setMaxScore(maxScore);
         resultRepository.saveAndFlush(result);

@@ -31,6 +31,7 @@ class QuizAttemptRecorderTest {
 
     private static final Long USER_ID = 5L;
     private static final Long MODULE_ID = 1L;
+    private static final String TOKEN_ID = "token-id-1";
 
     @Mock
     private QuizResultRepository resultRepository;
@@ -57,14 +58,15 @@ class QuizAttemptRecorderTest {
     }
 
     @Test
-    void record_storesTheScoreWithTheUserAndTheModule() {
-        recorder.record(USER_ID, MODULE_ID, 7, 10, false);
+    void record_storesTheScoreWithTheUserTheModuleAndTheTokenId() {
+        recorder.record(USER_ID, MODULE_ID, TOKEN_ID, 7, 10, false);
 
         ArgumentCaptor<QuizResult> captor = ArgumentCaptor.forClass(QuizResult.class);
         verify(resultRepository).saveAndFlush(captor.capture());
         QuizResult saved = captor.getValue();
         assertThat(saved.getUser()).isSameAs(user);
         assertThat(saved.getModule()).isSameAs(module);
+        assertThat(saved.getQuizTokenId()).isEqualTo(TOKEN_ID);
         assertThat(saved.getScore()).isEqualTo(7);
         assertThat(saved.getMaxScore()).isEqualTo(10);
         verifyNoInteractions(progressRepository);
@@ -75,7 +77,7 @@ class QuizAttemptRecorderTest {
         UserProgress progress = progress(true, false);
         when(progressRepository.findByUserIdAndModuleId(USER_ID, MODULE_ID)).thenReturn(Optional.of(progress));
 
-        recorder.record(USER_ID, MODULE_ID, 8, 10, true);
+        recorder.record(USER_ID, MODULE_ID, TOKEN_ID, 8, 10, true);
 
         verify(progressRepository).save(progress);
         assertThat(progress.isQuizCompleted()).isTrue();
@@ -87,7 +89,7 @@ class QuizAttemptRecorderTest {
         UserProgress progress = progress(true, true);
         when(progressRepository.findByUserIdAndModuleId(USER_ID, MODULE_ID)).thenReturn(Optional.of(progress));
 
-        recorder.record(USER_ID, MODULE_ID, 9, 10, true);
+        recorder.record(USER_ID, MODULE_ID, TOKEN_ID, 9, 10, true);
 
         verify(progressRepository, never()).save(any(UserProgress.class));
     }
@@ -96,7 +98,7 @@ class QuizAttemptRecorderTest {
     void record_failedAttempt_leavesAnEarlierPassUntouched() {
         UserProgress progress = progress(true, true);
 
-        recorder.record(USER_ID, MODULE_ID, 2, 10, false);
+        recorder.record(USER_ID, MODULE_ID, TOKEN_ID, 2, 10, false);
 
         verifyNoInteractions(progressRepository);
         assertThat(progress.isQuizCompleted()).isTrue();
@@ -106,7 +108,7 @@ class QuizAttemptRecorderTest {
     void record_passedWithoutAProgressRow_throws() {
         when(progressRepository.findByUserIdAndModuleId(USER_ID, MODULE_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> recorder.record(USER_ID, MODULE_ID, 8, 10, true))
+        assertThatThrownBy(() -> recorder.record(USER_ID, MODULE_ID, TOKEN_ID, 8, 10, true))
                 .isInstanceOf(IllegalStateException.class);
     }
 

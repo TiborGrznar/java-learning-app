@@ -31,15 +31,18 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 
 /**
  * Integration tests of loading and submitting a module quiz
@@ -209,7 +212,9 @@ class StudentQuizApiIntegrationTest {
                 .andExpect(jsonPath("$.percent").value(100))
                 .andExpect(jsonPath("$.passed").value(true))
                 .andExpect(jsonPath("$.answers.length()").value(3))
-                .andExpect(jsonPath("$.answers[0].correct").value(true));
+                .andExpect(jsonPath("$.answers[0].correct").value(true))
+                .andExpect(jsonPath("$.answers[0].correct").value(true))
+                .andExpect(jsonPath("$.answers[0].correctOption").exists());
 
         List<QuizResult> results = resultRepository.findByUserId(student.getId());
         assertThat(results).hasSize(1);
@@ -242,6 +247,25 @@ class StudentQuizApiIntegrationTest {
         assertThat(progress.isQuizCompleted()).isFalse();
     }
 
+    @Test
+    void submit_failedAttempt_hidesTheCorrectOptionsButMarksTheAnswers() throws Exception {
+        CourseModule module = saveModule("First", 1, true);
+        List<QuizQuestion> questions = saveQuestions(module, QuizOption.A, QuizOption.B, QuizOption.C);
+        User student = studentWithTheory(module);
+        String token = loadToken(student, module.getId());
+        String[] correct = correctAnswers(questions);
+
+        // The answers come back in the shuffled order of the drawn quiz, so the checks do not depend on it.
+        submit(student, module.getId(), submission(token,
+                correct[0], wrongAnswer(questions.get(1)), wrongAnswer(questions.get(2))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passed").value(false))
+                .andExpect(jsonPath("$.answers.length()").value(3))
+                .andExpect(jsonPath("$.answers[?(@.correct == true)]").value(hasSize(1)))
+                .andExpect(jsonPath("$.answers[?(@.correct == false)]").value(hasSize(2)))
+                .andExpect(jsonPath("$.answers[*].selected").value(hasSize(3)))
+                .andExpect(content().string(not(containsString("correctOption"))));
+    }
     @Test
     void submit_failedRetry_keepsAnEarlierPass() throws Exception {
         CourseModule module = saveModule("First", 1, true);
@@ -281,10 +305,12 @@ class StudentQuizApiIntegrationTest {
         CourseModule module = saveModule("First", 1, true);
         List<QuizQuestion> questions = saveQuestions(module, QuizOption.A, QuizOption.B);
         User student = studentWithTheory(module);
-        String token = loadToken(student, module.getId());
 
-        submit(student, module.getId(), submission(token, correctAnswers(questions))).andExpect(status().isOk());
-        submit(student, module.getId(), submission(token, correctAnswers(questions))).andExpect(status().isOk());
+        // A token works once, so each attempt starts by loading a new quiz.
+        submit(student, module.getId(), submission(loadToken(student, module.getId()), correctAnswers(questions)))
+                .andExpect(status().isOk());
+        submit(student, module.getId(), submission(loadToken(student, module.getId()), correctAnswers(questions)))
+                .andExpect(status().isOk());
 
         assertThat(resultRepository.findByUserId(student.getId())).hasSize(2);
     }

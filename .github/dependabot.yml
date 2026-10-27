@@ -1,0 +1,40 @@
+version: 2
+
+updates:
+  - package-ecosystem: maven
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine minor and patch bumps instead of one per library.
+      maven-minor-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "chore(ci)"
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      # Stay on the MySQL 8.4 LTS line. A new major version (9.x, 26.x) is a project decision
+      # (open-decisions.md) and must be changed together with the Testcontainers image.
+      - dependency-name: mysql
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(deps)"

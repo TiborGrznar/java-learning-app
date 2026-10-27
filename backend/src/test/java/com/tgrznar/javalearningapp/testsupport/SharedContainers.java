@@ -7,11 +7,12 @@ import org.testcontainers.mysql.MySQLContainer;
 /**
  * Containers shared by all integration tests. The field of an interface is static, so there is
  * one MySQL container for the whole test run, no matter how many Spring contexts the tests create.
- * The image matches docker-compose.yml and the production database.
+ * The image matches docker-compose.yml and the production database
+ * (DatabaseVersionConsistencyTest fails when the two differ).
  */
 public interface SharedContainers {
 
     @Container
     @ServiceConnection
-    MySQLContainer MYSQL = new MySQLContainer("mysql:8.0");
+    MySQLContainer MYSQL = new MySQLContainer("mysql:8.4");
 }

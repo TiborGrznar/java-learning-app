@@ -12,6 +12,7 @@ import com.tgrznar.javalearningapp.learning.quiz.dto.QuizResultResponse;
 import com.tgrznar.javalearningapp.learning.quiz.dto.QuizSubmissionRequest;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizAnswersException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizTokenException;
+import com.tgrznar.javalearningapp.learning.quiz.exception.QuizAlreadySubmittedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.QuizNotAvailableException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.QuizOutdatedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.TheoryNotCompletedException;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Duration;
 import java.util.HashSet;
@@ -32,11 +34,13 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.stream.LongStream;
+import java.sql.SQLIntegrityConstraintViolationException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -47,6 +51,7 @@ class StudentQuizServiceTest {
     private static final Long USER_ID = 5L;
     private static final Long MODULE_ID = 1L;
     private static final String TOKEN = "quiz-token";
+    private static final String TOKEN_ID = "token-id-1";
 
     @Mock
     private ModuleAccessService accessService;
@@ -189,7 +194,7 @@ class StudentQuizServiceTest {
         assertThat(result.percent()).isEqualTo(100);
         assertThat(result.passed()).isTrue();
         verify(progressService).ensureProgress(USER_ID, access);
-        verify(attemptRecorder).record(USER_ID, MODULE_ID, 3, 3, true);
+        verify(attemptRecorder).record(USER_ID, MODULE_ID, TOKEN_ID, 3, 3, true);
     }
 
     @Test
@@ -204,7 +209,7 @@ class StudentQuizServiceTest {
         assertThat(result.score()).isEqualTo(1);
         assertThat(result.percent()).isEqualTo(33);
         assertThat(result.passed()).isFalse();
-        verify(attemptRecorder).record(USER_ID, MODULE_ID, 1, 3, false);
+        verify(attemptRecorder).record(USER_ID, MODULE_ID, TOKEN_ID, 1, 3, false);
     }
 
     @Test
@@ -218,7 +223,7 @@ class StudentQuizServiceTest {
         assertThat(result.score()).isEqualTo(7);
         assertThat(result.percent()).isEqualTo(70);
         assertThat(result.passed()).isTrue();
-        verify(attemptRecorder).record(USER_ID, MODULE_ID, 7, 10, true);
+        verify(attemptRecorder).record(USER_ID, MODULE_ID, TOKEN_ID, 7, 10, true);
     }
 
     @Test
@@ -231,24 +236,57 @@ class StudentQuizServiceTest {
 
         assertThat(result.percent()).isEqualTo(60);
         assertThat(result.passed()).isFalse();
-        verify(attemptRecorder).record(USER_ID, MODULE_ID, 6, 10, false);
+        verify(attemptRecorder).record(USER_ID, MODULE_ID, TOKEN_ID, 6, 10, false);
     }
 
     @Test
-    void submit_resultListsTheSelectedAndTheCorrectOption() {
+    void submit_passed_listsTheSelectedAndTheCorrectOption() {
         givenQuizAccess();
-        givenToken(3);
-        when(questionRepository.findByModuleIdOrderByIdAsc(MODULE_ID)).thenReturn(mixedBank());
+        givenToken(10);
+        when(questionRepository.findByModuleIdOrderByIdAsc(MODULE_ID)).thenReturn(bank(10));
 
-        QuizResultResponse result = service.submit(USER_ID, MODULE_ID, request(
-                answer(1L, QuizOption.D), answer(2L, QuizOption.B), answer(3L, QuizOption.C)));
+        // Question 1 answered wrong (D), the other nine right (A): 9 of 10 passes.
+        QuizAnswerRequest[] answers = LongStream.rangeClosed(1, 10)
+                .mapToObj(id -> answer(id, id == 1 ? QuizOption.D : QuizOption.A))
+                .toArray(QuizAnswerRequest[]::new);
 
+        QuizResultResponse result = service.submit(USER_ID, MODULE_ID, request(answers));
+
+        assertThat(result.passed()).isTrue();
         QuizAnswerResult first = result.answers().get(0);
         assertThat(first.questionId()).isEqualTo(1L);
         assertThat(first.selected()).isEqualTo(QuizOption.D);
         assertThat(first.correctOption()).isEqualTo(QuizOption.A);
         assertThat(first.correct()).isFalse();
         assertThat(result.answers().get(1).correct()).isTrue();
+        assertThat(result.answers().get(1).correctOption()).isEqualTo(QuizOption.A);
+    }
+
+    @Test
+    void submit_failed_hidesTheCorrectOptionsButKeepsTheMarksAndTheSelection() {
+        givenQuizAccess();
+        givenToken(3);
+        when(questionRepository.findByModuleIdOrderByIdAsc(MODULE_ID)).thenReturn(mixedBank());
+
+        QuizResultResponse result = service.submit(USER_ID, MODULE_ID, request(
+                answer(1L, QuizOption.A), answer(2L, QuizOption.A), answer(3L, QuizOption.A)));
+
+        assertThat(result.passed()).isFalse();
+        assertThat(result.answers()).extracting(QuizAnswerResult::correctOption).containsOnlyNulls();
+        assertThat(result.answers()).extracting(QuizAnswerResult::correct).containsExactly(true, false, false);
+        assertThat(result.answers()).extracting(QuizAnswerResult::selected).containsOnly(QuizOption.A);
+    }
+
+    @Test
+    void submit_recordsTheTokenIdOfTheQuiz() {
+        givenQuizAccess();
+        givenToken(3);
+        when(questionRepository.findByModuleIdOrderByIdAsc(MODULE_ID)).thenReturn(mixedBank());
+
+        service.submit(USER_ID, MODULE_ID, request(
+                answer(1L, QuizOption.A), answer(2L, QuizOption.B), answer(3L, QuizOption.C)));
+
+        verify(attemptRecorder).record(USER_ID, MODULE_ID, TOKEN_ID, 3, 3, true);
     }
 
     @Test
@@ -300,7 +338,7 @@ class StudentQuizServiceTest {
     @Test
     void submit_tokenWithoutQuestions_throwsInvalidToken() {
         givenQuizAccess();
-        when(tokenService.verify(TOKEN, USER_ID, MODULE_ID)).thenReturn(List.of());
+        when(tokenService.verify(TOKEN, USER_ID, MODULE_ID)).thenReturn(new VerifiedQuizToken(TOKEN_ID, List.of()));
 
         assertThatThrownBy(() -> service.submit(USER_ID, MODULE_ID, request(answer(1L, QuizOption.A))))
                 .isInstanceOf(InvalidQuizTokenException.class);
@@ -362,6 +400,34 @@ class StudentQuizServiceTest {
         verifyNoInteractions(progressService, attemptRecorder);
     }
 
+    @Test
+    void submit_tokenAlreadyUsed_throwsAlreadySubmitted() {
+        givenQuizAccess();
+        givenToken(3);
+        when(questionRepository.findByModuleIdOrderByIdAsc(MODULE_ID)).thenReturn(mixedBank());
+        doThrow(duplicateTokenViolation()).when(attemptRecorder)
+                .record(USER_ID, MODULE_ID, TOKEN_ID, 3, 3, true);
+
+        assertThatThrownBy(() -> service.submit(USER_ID, MODULE_ID, request(
+                answer(1L, QuizOption.A), answer(2L, QuizOption.B), answer(3L, QuizOption.C))))
+                .isInstanceOf(QuizAlreadySubmittedException.class);
+    }
+
+    @Test
+    void submit_otherIntegrityViolation_isNotReportedAsAnAlreadySubmittedQuiz() {
+        givenQuizAccess();
+        givenToken(3);
+        when(questionRepository.findByModuleIdOrderByIdAsc(MODULE_ID)).thenReturn(mixedBank());
+        DataIntegrityViolationException foreignKeyFailure = new DataIntegrityViolationException("insert failed",
+                new SQLIntegrityConstraintViolationException(
+                        "Cannot add or update a child row: a foreign key constraint fails"));
+        doThrow(foreignKeyFailure).when(attemptRecorder).record(USER_ID, MODULE_ID, TOKEN_ID, 3, 3, true);
+
+        assertThatThrownBy(() -> service.submit(USER_ID, MODULE_ID, request(
+                answer(1L, QuizOption.A), answer(2L, QuizOption.B), answer(3L, QuizOption.C))))
+                .isSameAs(foreignKeyFailure);
+    }
+
     // ---------- helpers ----------
 
     private ModuleAccessService.ModuleAccess givenQuizAccess() {
@@ -372,8 +438,15 @@ class StudentQuizServiceTest {
     }
 
     private void givenToken(int questionCount) {
-        when(tokenService.verify(TOKEN, USER_ID, MODULE_ID))
-                .thenReturn(LongStream.rangeClosed(1, questionCount).boxed().toList());
+        when(tokenService.verify(TOKEN, USER_ID, MODULE_ID)).thenReturn(new VerifiedQuizToken(
+                TOKEN_ID, LongStream.rangeClosed(1, questionCount).boxed().toList()));
+    }
+
+    /** What MySQL reports when the unique key on quiz_results.quiz_token_id rejects a second insert. */
+    private static DataIntegrityViolationException duplicateTokenViolation() {
+        return new DataIntegrityViolationException("could not execute statement",
+                new SQLIntegrityConstraintViolationException(
+                        "Duplicate entry 'token-id-1' for key 'quiz_results.uq_quiz_results_quiz_token_id'"));
     }
 
     private static QuizSubmissionRequest request(QuizAnswerRequest... answers) {

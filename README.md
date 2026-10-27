@@ -23,13 +23,13 @@ Work in progress.
 
 ## API
 
-All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires a valid access token in the `Authorization: Bearer <token>` header. The `Access` column shows who may call the endpoint.
+All endpoints are prefixed with `/api/v1`. Everything except the four public `/auth` endpoints below requires a valid access token in the `Authorization: Bearer <token>` header. The `Access` column shows who may call the endpoint.
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
 | POST | `/auth/register` | public | Creates a student account (`201`). The role is always `STUDENT` |
 | POST | `/auth/login` | public | Returns an access token (15 min) and a refresh token (7 days) |
-| POST | `/auth/refresh` | public | Exchanges a refresh token for a new token pair, the old refresh token is revoked. A deactivated account is refused (`ACCOUNT_DISABLED`) |
+| POST | `/auth/refresh` | public | Exchanges a refresh token for a new token pair, the old refresh token is revoked. A refresh token works once: if two requests send the same token at the same time, exactly one gets a new pair and the other one gets `401`. A deactivated account is refused (`ACCOUNT_DISABLED`) |
 | POST | `/auth/logout` | public | Revokes the given refresh token (`204`) |
 | GET | `/users/me` | any signed-in user | Profile of the signed-in user |
 | POST | `/schools` | `ADMIN` | Creates a school (`201`). The name must be unique |
@@ -68,7 +68,7 @@ All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires
 | GET | `/learning/modules/{id}` | `STUDENT` in a class | Module with the theory text and progress flags. A locked module answers `403 MODULE_LOCKED` |
 | POST | `/learning/modules/{id}/theory-completed` | `STUDENT` in a class | Marks the theory as read and returns the module |
 | GET | `/learning/modules/{moduleId}/quiz` | `STUDENT` in a class | Draws a quiz of up to ten questions and a quiz token (`Cache-Control: no-store`). The theory must be read first |
-| POST | `/learning/modules/{moduleId}/quiz/submissions` | `STUDENT` in a class | Evaluates the answers of a drawn quiz |
+| POST | `/learning/modules/{moduleId}/quiz/submissions` | `STUDENT` in a class | Evaluates the answers of a drawn quiz. A quiz token works for one submission only. After a failed attempt the answers are marked right or wrong, the correct options are shown after a pass |
 
 Rules of user management: an administrator cannot change their own role or deactivate themselves, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them. There is no password change yet, so the temporary password of a new teacher stays valid until that is implemented.
 
@@ -100,7 +100,7 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 400 | `PASSWORD_MISMATCH` | Password and its confirmation differ |
 | 400 | `INVALID_QUIZ_TOKEN` | The quiz token is malformed or was issued for someone else, load the quiz again |
 | 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
-| 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired or revoked |
+| 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired, revoked or already used. Also returned after the account was deactivated, because deactivation revokes all its refresh tokens |
 | 401 | `INVALID_TOKEN` | The access token is valid, but its user no longer exists |
 | 401 | `UNAUTHENTICATED` | No access token was sent, or it is invalid or expired |
 | 403 | `ACCOUNT_DISABLED` | The account is deactivated |
@@ -126,12 +126,13 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 409 | `THEORY_NOT_COMPLETED` | The theory of the module has not been marked as read yet |
 | 409 | `QUIZ_NOT_AVAILABLE` | The module has no quiz questions |
 | 409 | `QUIZ_OUTDATED` | The quiz expired or one of its questions was deleted, load it again |
+| 409 | `QUIZ_ALREADY_SUBMITTED` | The quiz token was already used for a submission (double click, retry), load the quiz again |
 | 429 | `TOO_MANY_ATTEMPTS` | Too many failed enrollment attempts, the `Retry-After` header says how many seconds to wait |
 
 ## Tech stack
 
 - **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, Lombok, Maven
-- **Database:** MySQL 8 (Docker for local development), Flyway migrations
+- **Database:** MySQL 8.4 LTS (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
 
 Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
@@ -204,7 +205,7 @@ cd backend
 .\mvnw.cmd test
 ```
 
-The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Every test is rolled back, so the tests do not depend on each other. The first run is slower because Docker pulls the images. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
+The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8.4 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Most tests are rolled back, so they do not depend on each other. The concurrency tests (single-use quiz token, atomic refresh token rotation) cannot run in one transaction, because parallel requests must see committed data, so each of them removes its own data in the end. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
 
 ## Continuous integration
 
@@ -266,7 +267,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   └── codingtask/ quizresult/ codingresult/ userprogress/
 │       │   └── resources/
 │       │       ├── application.yaml
-│       │       └── db/migration/ Flyway migrations (V1 to V5)
+│       │       └── db/migration/ Flyway migrations (V1 to V6)
 │       └── test/             unit and integration tests, testsupport/ holds the Testcontainers setup and shared fixtures
 ├── docker-compose.yml    local MySQL
 └── .env.example          template of required environment variables
@@ -276,7 +277,7 @@ Tests lie in the package of the tested class (they need package-private access i
 
 ## Database migrations
 
-Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V6__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
+Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V7__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
 
 ## Development workflow
 
