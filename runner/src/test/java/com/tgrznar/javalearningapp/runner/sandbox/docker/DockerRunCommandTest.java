@@ -1,10 +1,12 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.docker;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.regex.Matcher;
+
+import com.tgrznar.javalearningapp.runner.sandbox.config.SandboxProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;

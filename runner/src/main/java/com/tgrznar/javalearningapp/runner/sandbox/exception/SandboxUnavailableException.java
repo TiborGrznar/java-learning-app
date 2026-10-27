@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.exception;
 
 /**
  * The sandbox itself failed (Docker missing or erroring, launcher self-check failed, no result

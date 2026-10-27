@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.docker;
 
 import java.time.Duration;
 import java.util.List;

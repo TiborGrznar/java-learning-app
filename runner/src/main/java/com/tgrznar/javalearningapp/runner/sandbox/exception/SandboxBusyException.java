@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.exception;
 
 /** All sandbox slots and the queue are taken; the caller should answer 503 and the client retry later. */
 public class SandboxBusyException extends RuntimeException {

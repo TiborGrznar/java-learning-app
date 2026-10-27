@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.docker;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;

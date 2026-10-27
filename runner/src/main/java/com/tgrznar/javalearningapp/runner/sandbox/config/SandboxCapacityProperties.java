@@ -1,4 +1,4 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.config;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;

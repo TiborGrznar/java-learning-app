@@ -1,5 +1,6 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.config;
 
+import com.tgrznar.javalearningapp.runner.sandbox.docker.OrphanReaper;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 

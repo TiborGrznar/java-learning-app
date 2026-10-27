@@ -1,5 +1,7 @@
 package com.tgrznar.javalearningapp.runner.sandbox;
 
+import com.tgrznar.javalearningapp.runner.sandbox.exception.SandboxBusyException;
+
 import java.util.concurrent.Semaphore;
 
 /**

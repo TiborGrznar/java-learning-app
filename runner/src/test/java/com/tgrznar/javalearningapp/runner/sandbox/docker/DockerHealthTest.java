@@ -1,8 +1,11 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.docker;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.concurrent.atomic.AtomicLong;
+
+import com.tgrznar.javalearningapp.runner.sandbox.config.SandboxProperties;
+import com.tgrznar.javalearningapp.runner.sandbox.exception.SandboxUnavailableException;
 import org.junit.jupiter.api.Test;
 
 class DockerHealthTest {

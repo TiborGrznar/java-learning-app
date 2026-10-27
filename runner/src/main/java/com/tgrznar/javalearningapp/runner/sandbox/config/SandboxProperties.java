@@ -1,5 +1,6 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.config;
 
+import com.tgrznar.javalearningapp.runner.sandbox.docker.DockerRunCommand;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;

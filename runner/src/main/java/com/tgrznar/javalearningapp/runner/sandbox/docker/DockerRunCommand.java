@@ -1,4 +1,6 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.docker;
+
+import com.tgrznar.javalearningapp.runner.sandbox.config.SandboxProperties;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;

@@ -11,6 +11,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
+import com.tgrznar.javalearningapp.runner.sandbox.config.SandboxCapacityProperties;
+import com.tgrznar.javalearningapp.runner.sandbox.config.SandboxProperties;
+import com.tgrznar.javalearningapp.runner.sandbox.docker.DockerCli;
+import com.tgrznar.javalearningapp.runner.sandbox.docker.DockerRunCommand;
+import com.tgrznar.javalearningapp.runner.sandbox.docker.FakeDockerCli;
+import com.tgrznar.javalearningapp.runner.sandbox.exception.SandboxBusyException;
+import com.tgrznar.javalearningapp.runner.sandbox.exception.SandboxUnavailableException;
 import org.junit.jupiter.api.Test;
 
 class DockerSandboxTest {

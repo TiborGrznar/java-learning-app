@@ -1,8 +1,10 @@
-package com.tgrznar.javalearningapp.runner.sandbox;
+package com.tgrznar.javalearningapp.runner.sandbox.docker;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.function.LongSupplier;
+
+import com.tgrznar.javalearningapp.runner.sandbox.config.SandboxProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
