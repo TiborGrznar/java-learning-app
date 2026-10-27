@@ -23,13 +23,13 @@ Work in progress.
 
 ## API
 
-All endpoints are prefixed with `/api/v1`. Everything except `/auth/**` requires a valid access token in the `Authorization: Bearer <token>` header. The `Access` column shows who may call the endpoint.
+All endpoints are prefixed with `/api/v1`. Everything except the four public `/auth` endpoints below requires a valid access token in the `Authorization: Bearer <token>` header. The `Access` column shows who may call the endpoint.
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
 | POST | `/auth/register` | public | Creates a student account (`201`). The role is always `STUDENT` |
 | POST | `/auth/login` | public | Returns an access token (15 min) and a refresh token (7 days) |
-| POST | `/auth/refresh` | public | Exchanges a refresh token for a new token pair, the old refresh token is revoked. A deactivated account is refused (`ACCOUNT_DISABLED`) |
+| POST | `/auth/refresh` | public | Exchanges a refresh token for a new token pair, the old refresh token is revoked. A refresh token works once: if two requests send the same token at the same time, exactly one gets a new pair and the other one gets `401`. A deactivated account is refused (`ACCOUNT_DISABLED`) |
 | POST | `/auth/logout` | public | Revokes the given refresh token (`204`) |
 | GET | `/users/me` | any signed-in user | Profile of the signed-in user |
 | POST | `/schools` | `ADMIN` | Creates a school (`201`). The name must be unique |
@@ -100,7 +100,7 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 400 | `PASSWORD_MISMATCH` | Password and its confirmation differ |
 | 400 | `INVALID_QUIZ_TOKEN` | The quiz token is malformed or was issued for someone else, load the quiz again |
 | 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
-| 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired or revoked |
+| 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired, revoked or already used. Also returned after the account was deactivated, because deactivation revokes all its refresh tokens |
 | 401 | `INVALID_TOKEN` | The access token is valid, but its user no longer exists |
 | 401 | `UNAUTHENTICATED` | No access token was sent, or it is invalid or expired |
 | 403 | `ACCOUNT_DISABLED` | The account is deactivated |
@@ -205,7 +205,7 @@ cd backend
 .\mvnw.cmd test
 ```
 
-The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8.4 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Every test is rolled back, so the tests do not depend on each other. The first run is slower because Docker pulls the images. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
+The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8.4 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Most tests are rolled back, so they do not depend on each other. The concurrency tests (single-use quiz token, atomic refresh token rotation) cannot run in one transaction, because parallel requests must see committed data, so each of them removes its own data in the end. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
 
 ## Continuous integration
 
