@@ -7,6 +7,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -56,5 +58,17 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    /**
+     * Passwords are checked by AuthService, not by Spring's form or basic login. Without this bean Spring Boot
+     * creates an in-memory user with a random password and prints it to the log at every start. This one
+     * finds nobody, so no such account exists, even if httpBasic or formLogin were switched on by mistake later.
+     */
+    @Bean
+    public UserDetailsService noUserDetailsService() {
+        return username -> {
+            throw new UsernameNotFoundException("Password login is handled by AuthService");
+        };
     }
 }

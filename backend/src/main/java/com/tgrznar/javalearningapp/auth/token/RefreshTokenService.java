@@ -49,8 +49,12 @@ public class RefreshTokenService {
 
     /**
      * Validates the given token, revokes it and issues a replacement (rotation).
+     * <p>
+     * The revoking is one atomic statement (compare-and-set): of two requests that present the same token
+     * at the same moment, the database lets exactly one revoke it. The other one gets no new token.
+     * Reading the flag first and writing it later would let both through.
      *
-     * @throws InvalidRefreshTokenException if the token is unknown, revoked or expired
+     * @throws InvalidRefreshTokenException if the token is unknown, revoked, expired or was just used by another request
      */
     @Transactional
     public RotatedToken rotate(String rawToken) {
@@ -59,6 +63,11 @@ public class RefreshTokenService {
                 .filter(token -> token.getExpiresAt().isAfter(Instant.now()))
                 .orElseThrow(InvalidRefreshTokenException::new);
 
+        if (repository.revokeIfActive(current.getId()) == 0) {
+            throw new InvalidRefreshTokenException();
+        }
+        // The bulk update bypassed the loaded entity, so bring it in line with the database. Only the
+        // request that won the compare-and-set gets here, so this extra write cannot conflict with anyone.
         current.setRevoked(true);
 
         User user = current.getUser();
