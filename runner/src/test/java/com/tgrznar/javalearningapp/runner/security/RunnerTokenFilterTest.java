@@ -1,11 +1,14 @@
 package com.tgrznar.javalearningapp.runner.security;
 
+import com.tgrznar.javalearningapp.runner.sandbox.docker.DockerHealth;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -26,11 +29,26 @@ class RunnerTokenFilterTest {
     @Autowired
     private MockMvc mockMvc;
 
+    // The tests must not depend on Docker running on the machine.
+    @MockitoBean
+    private DockerHealth dockerHealth;
+
     @Test
     void health_needsNoToken() throws Exception {
+        when(dockerHealth.isDockerAvailable()).thenReturn(true);
+
         mockMvc.perform(get("/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
+    void health_needsNoToken_evenWhenDockerIsDown() throws Exception {
+        when(dockerHealth.isDockerAvailable()).thenReturn(false);
+
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value("DOCKER_UNAVAILABLE"));
     }
 
     @Test
