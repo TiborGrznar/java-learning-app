@@ -145,6 +145,28 @@ class AdminUserActiveApiIntegrationTest extends AdminUserApiTestSupport {
                 UserRole.ADMIN)
                 .andExpect(status().isOk());
 
+        // Deactivation revoked every refresh token of the user, so the token is simply no longer valid.
+        mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+    }
+
+    @Test
+    void refresh_userDeactivatedWithoutRevokingTokens_isStillRejectedAsDisabled() throws Exception {
+        // Second line of defence: even if some path deactivated the account and forgot to revoke its tokens,
+        // a still-valid refresh token must not produce a new session.
+        User target = saveUserWithPassword(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.STUDENT);
+
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson(target.getEmail())))
+                .andExpect(status().isOk())
+                .andReturn();
+        String refreshToken = JsonPath.read(login.getResponse().getContentAsString(), "$.refreshToken");
+
+        target.setActive(false);
+        userRepository.saveAndFlush(target);
+
         mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
                 .andExpect(status().isForbidden())
