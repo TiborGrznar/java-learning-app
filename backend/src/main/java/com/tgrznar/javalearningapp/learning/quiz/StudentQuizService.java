@@ -18,6 +18,7 @@ import com.tgrznar.javalearningapp.learning.quiz.exception.TheoryNotCompletedExc
 import com.tgrznar.javalearningapp.quizquestion.QuizOption;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestion;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestionRepository;
+import com.tgrznar.javalearningapp.ratelimit.RateLimiters;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.NestedExceptionUtils;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -59,8 +60,11 @@ public class StudentQuizService {
     private final QuizTokenService tokenService;
     private final QuizProperties properties;
     private final RandomGenerator random;
+    private final RateLimiters rateLimiters;
 
     public QuizResponse load(Long userId, Long moduleId) {
+        // Every load draws a new quiz and a new token, so repeated loads are limited per student.
+        rateLimiters.quizLoadPerUser().checkAndRecord(String.valueOf(userId));
         requireQuizAccess(userId, moduleId);
 
         List<QuizQuestion> bank = questionRepository.findByModuleIdOrderByIdAsc(moduleId);
