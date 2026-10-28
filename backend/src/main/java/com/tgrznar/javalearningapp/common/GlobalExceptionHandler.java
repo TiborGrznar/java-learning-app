@@ -15,6 +15,8 @@ import com.tgrznar.javalearningapp.learning.quiz.exception.QuizOutdatedException
 import com.tgrznar.javalearningapp.learning.quiz.exception.TheoryNotCompletedException;
 import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
 import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundException;
+import com.tgrznar.javalearningapp.ratelimit.RateLimitExceededException;
+import com.tgrznar.javalearningapp.ratelimit.RequestBodyTooLargeException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNameAlreadyExistsException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
@@ -79,6 +81,8 @@ import java.util.Map;
  * ALREADY_ENROLLED               409     the student already belongs to a class
  * SCHOOL_MISMATCH                409     the student's school differs from the school of the class
  * TOO_MANY_ATTEMPTS              429     too many failed enrollment attempts, the Retry-After header says how long to wait
+ * RATE_LIMITED                   429     too many requests from this address, e-mail or student, the Retry-After header says how long to wait
+ * PAYLOAD_TOO_LARGE              413     the request body exceeds the allowed size, a client bug
  * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
  * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
@@ -107,11 +111,26 @@ public class GlobalExceptionHandler {
         return new ErrorResponse("VALIDATION_ERROR", "Formulár obsahuje chyby", fieldErrors);
     }
 
-    /** 400 INVALID_REQUEST_BODY: missing or malformed JSON body. */
+    /** 400 INVALID_REQUEST_BODY: missing or malformed JSON body; 413 PAYLOAD_TOO_LARGE when the body limit cut the stream. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorResponse handleUnreadableBody() {
-        return ErrorResponse.of("INVALID_REQUEST_BODY", "Neplatné telo požiadavky");
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        Throwable cause = ex;
+        for (int depth = 0; cause != null && depth < 10; depth++, cause = cause.getCause()) {
+            if (cause instanceof RequestBodyTooLargeException) {
+                return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                        .body(ErrorResponse.of("PAYLOAD_TOO_LARGE", "Telo požiadavky je príliš veľké"));
+            }
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_REQUEST_BODY", "Neplatné telo požiadavky"));
+    }
+
+    /** 429 RATE_LIMITED: a limit applied inside a service (failed logins per e-mail, quiz loads). */
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimited(RateLimitExceededException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                .body(ErrorResponse.of("RATE_LIMITED", "Príliš veľa požiadaviek. Skúste to znova neskôr"));
     }
 
     /** 400 PASSWORD_MISMATCH: password and confirmPassword differ (registration). */
