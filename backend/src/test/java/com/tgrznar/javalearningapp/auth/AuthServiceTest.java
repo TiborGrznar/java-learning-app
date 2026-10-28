@@ -10,6 +10,7 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
+import com.tgrznar.javalearningapp.ratelimit.TestRateLimiters;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -52,7 +53,7 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, passwordEncoder, jwtService, refreshTokenService);
+        authService = new AuthService(userRepository, passwordEncoder, jwtService, refreshTokenService, TestRateLimiters.unlimited());
     }
 
     // ---------- register ----------
