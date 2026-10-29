@@ -20,6 +20,7 @@ import com.tgrznar.javalearningapp.module.CourseModule;
 import com.tgrznar.javalearningapp.quizquestion.QuizOption;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestion;
 import com.tgrznar.javalearningapp.quizquestion.QuizQuestionRepository;
+import com.tgrznar.javalearningapp.ratelimit.TestRateLimiters;
 import com.tgrznar.javalearningapp.userprogress.UserProgress;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -73,7 +74,7 @@ class StudentQuizServiceTest {
     @BeforeEach
     void setUp() {
         service = new StudentQuizService(accessService, progressService, attemptRecorder, questionRepository,
-                tokenService, new QuizProperties(70, 3, Duration.ofHours(2)), new Random(42));
+                tokenService, new QuizProperties(70, 3, Duration.ofHours(2)), new Random(42), TestRateLimiters.unlimited());
     }
 
     // ---------- load ----------

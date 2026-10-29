@@ -16,6 +16,7 @@ Work in progress.
 | Classes and student enrollment with a join code | Done |
 | Teacher: own classes and their join codes | Done |
 | Student: modules with step-by-step unlocking, theory, quiz | Done |
+| Rate limiting and request size limits | Done |
 | Teacher: student overview and deactivation of students | Planned |
 | Coding tasks, progress overviews and archiving | Planned |
 | Sandboxed execution of student code | Planned |
@@ -99,6 +100,7 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 400 | `INVALID_REQUEST_BODY` | The body is not valid JSON or contains an unknown value (e.g. an unknown role) |
 | 400 | `PASSWORD_MISMATCH` | Password and its confirmation differ |
 | 400 | `INVALID_QUIZ_TOKEN` | The quiz token is malformed or was issued for someone else, load the quiz again |
+| 413 | `PAYLOAD_TOO_LARGE` | The request body exceeds the allowed size, a client bug |
 | 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
 | 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired, revoked or already used. Also returned after the account was deactivated, because deactivation revokes all its refresh tokens |
 | 401 | `INVALID_TOKEN` | The access token is valid, but its user no longer exists |
@@ -128,6 +130,28 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 409 | `QUIZ_OUTDATED` | The quiz expired or one of its questions was deleted, load it again |
 | 409 | `QUIZ_ALREADY_SUBMITTED` | The quiz token was already used for a submission (double click, retry), load the quiz again |
 | 429 | `TOO_MANY_ATTEMPTS` | Too many failed enrollment attempts, the `Retry-After` header says how many seconds to wait |
+| 429 | `RATE_LIMITED` | Too many requests from this address, for this e-mail or from this student, the `Retry-After` header says how many seconds to wait |
+
+## Rate limiting and request size limits
+
+Limits are kept in memory (`ratelimit/RateLimiter`, a sliding window), so they reset on restart and are not shared between application instances. Replace the limiter before running several instances.
+
+| What | Key | Default |
+|------|-----|---------|
+| `POST /auth/login` | client IP | 10 per 15 minutes |
+| `POST /auth/register` | client IP | 5 per hour |
+| `POST /auth/refresh` | client IP | 30 per minute |
+| any other request under `/api/v1/` | client IP | 600 per minute |
+| failed logins | hash of the e-mail, any IP | 5 per 15 minutes |
+| quiz load | student id | 20 per minute |
+
+All values are configurable under `app.rate-limit.*`. A limit answers `429 RATE_LIMITED` with a `Retry-After` header. The number of tracked keys is bounded, so forged addresses cannot exhaust memory.
+
+**Client IP.** By default the address of the TCP connection is used. `X-Forwarded-For` is believed only when the connection comes from a proxy listed in `RATE_LIMIT_TRUSTED_PROXIES` (exact addresses, comma separated). The rightmost entry that is not a trusted proxy is the client. Set it before deploying behind a reverse proxy, otherwise all users share the proxy's address.
+
+**Body size.** Request bodies under `/api/` are limited to 16 KiB, and to 1 MiB under the prefixes in `app.rate-limit.large-body-prefixes` (module theory). Larger bodies get `413 PAYLOAD_TOO_LARGE`, including bodies sent without a `Content-Length`.
+
+Known trade-offs: anyone who knows an e-mail can block logins to it for the length of the window (only failures count and a successful login clears the counter, so the block is short). A school behind one public address shares the registration and general limits, raise them in the configuration if needed.
 
 ## Tech stack
 
@@ -169,6 +193,7 @@ Fill in the values in `.env` (it is git-ignored and must never be committed):
 | `ADMIN_PASSWORD` | Optional, password of the first administrator: at least 12 characters, at most 72 bytes. Remove it from the environment after the first start |
 | `ADMIN_NAME` | Optional, first name of the first administrator (default `Admin`) |
 | `ADMIN_SURNAME` | Optional, surname of the first administrator (default `Administrátor`) |
+| `RATE_LIMIT_TRUSTED_PROXIES` | Optional, comma separated addresses of reverse proxies whose `X-Forwarded-For` header is believed (default empty: never) |
 
 Generate a `JWT_SECRET` (PowerShell):
 
@@ -245,6 +270,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   │   ├── security/     JWT service, filter, security config, 401/403 JSON handlers
 │       │   │   │   └── token/        refresh token entity, repository and service
 │       │   │   ├── common/       global exception handler, error body, page response, MVC configuration
+│       │   │   ├── ratelimit/    sliding-window limiter, per-IP filter, body size filter, client IP resolution
 │       │   │   ├── user/
 │       │   │   │   ├── model/        user entity, role, repository
 │       │   │   │   ├── admin/        user management by an administrator

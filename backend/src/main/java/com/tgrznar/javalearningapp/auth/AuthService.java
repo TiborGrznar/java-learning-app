@@ -10,6 +10,9 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
+import com.tgrznar.javalearningapp.ratelimit.LimiterKeys;
+import com.tgrznar.javalearningapp.ratelimit.RateLimiter;
+import com.tgrznar.javalearningapp.ratelimit.RateLimiters;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -30,6 +33,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
+    private final RateLimiter loginFailures;
 
     // Compared against when the e-mail is unknown, so that response time does not reveal
     // whether an account exists.
@@ -38,11 +42,13 @@ public class AuthService {
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
-                       RefreshTokenService refreshTokenService) {
+                       RefreshTokenService refreshTokenService,
+                       RateLimiters rateLimiters) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
+        this.loginFailures = rateLimiters.loginFailuresPerEmail();
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
@@ -73,15 +79,26 @@ public class AuthService {
         }
     }
 
+    /**
+     * Failed logins are counted per e-mail whatever the IP, and counted the same way for an unknown
+     * e-mail, so the limit reveals nothing about which accounts exist. The key is a hash of the e-mail.
+     * Known trade-off: anyone can block logins to a known e-mail for the length of the window; only
+     * failures count and a successful login clears the counter, so the block is short and never permanent.
+     */
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(normalizeEmail(request.email())).orElse(null);
+        String email = normalizeEmail(request.email());
+        String limiterKey = LimiterKeys.hashed(email);
+        loginFailures.check(limiterKey);
+
+        User user = userRepository.findByEmail(email).orElse(null);
 
         String hashToCheck = user != null ? user.getPasswordHash() : dummyPasswordHash;
         boolean passwordMatches = passwordEncoder.matches(request.password(), hashToCheck);
 
         // Same error for unknown e-mail and wrong password (prevents user enumeration).
         if (user == null || !passwordMatches) {
+            loginFailures.record(limiterKey);
             throw new InvalidCredentialsException();
         }
         // Reported only after the password was verified.
@@ -89,6 +106,7 @@ public class AuthService {
             throw new AccountDisabledException();
         }
 
+        loginFailures.clear(limiterKey);
         return buildResponse(user, refreshTokenService.issue(user));
     }
 
