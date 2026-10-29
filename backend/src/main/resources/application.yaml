@@ -28,6 +28,25 @@ app:
     password: ${ADMIN_PASSWORD:}
     name: ${ADMIN_NAME:}
     surname: ${ADMIN_SURNAME:}
+  rate-limit:
+    # Per client IP, evaluated before authentication.
+    login-per-ip: { max: 10, window: 15m }
+    register-per-ip: { max: 5, window: 1h }
+    refresh-per-ip: { max: 30, window: 1m }
+    # Every other request under /api/v1/. A school behind one address shares this budget.
+    api-per-ip: { max: 600, window: 1m }
+    # Failed logins per e-mail, whatever the IP.
+    login-failures-per-email: { max: 5, window: 15m }
+    # Quiz loads per student.
+    quiz-load-per-user: { max: 20, window: 1m }
+    # Upper bound of tracked keys per limiter, protects memory against forged keys.
+    max-tracked-keys: 10000
+    # Exact addresses of reverse proxies whose X-Forwarded-For is believed (comma separated). Empty = never.
+    trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
+    max-body-bytes: 16384
+    large-body-bytes: 1048576
+    large-body-prefixes:
+      - /api/v1/modules
 
 ---
 spring:

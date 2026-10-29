@@ -8,3 +8,10 @@ app:
   jwt:
     # Throwaway signing key for tests only (base64, 42 bytes). Never use it outside the tests.
     secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQtZG8tbm90LXVzZS1lbHNld2hlcmUh
+  rate-limit:
+    login-per-ip: { max: 100000 }
+    register-per-ip: { max: 100000 }
+    refresh-per-ip: { max: 100000 }
+    api-per-ip: { max: 100000 }
+    login-failures-per-email: { max: 100000 }
+    quiz-load-per-user: { max: 100000 }
