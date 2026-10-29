@@ -5,6 +5,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -21,6 +23,7 @@ import java.security.MessageDigest;
  * the same machine cannot start containers just by finding the port.
  */
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class RunnerTokenFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Runner-Token";

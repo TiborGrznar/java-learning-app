@@ -4,6 +4,7 @@ import com.tgrznar.javalearningapp.runner.sandbox.docker.DockerHealth;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -16,9 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The token filter and the health endpoint. There is no protected endpoint yet, so "the filter let
- * the request through" shows as 404 (nothing is mapped there); real endpoint tests replace that
- * with the endpoint's own response when /run is added.
+ * The token filter and the health endpoint. "The filter let the request through" shows as the
+ * endpoint's own answer: an empty JSON object is rejected by validation with 400.
  */
 @SpringBootTest(properties = "runner.token=" + RunnerTokenFilterTest.TOKEN)
 @AutoConfigureMockMvc
@@ -72,8 +72,9 @@ class RunnerTokenFilterTest {
 
     @Test
     void protectedPath_withCorrectToken_passesTheFilter() throws Exception {
-        mockMvc.perform(post("/run").header(RunnerTokenFilter.HEADER, TOKEN))
-                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/run").header(RunnerTokenFilter.HEADER, TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
