@@ -147,8 +147,9 @@ echo "compile: exit=$compile_exit timed_out=$compile_timed_out" >&2
 if [ "$compile_exit" -eq 0 ]; then
   mapfile -t CASE_FILES < <(find "$IN/cases" -maxdepth 1 -type f -name '*.in' 2>/dev/null | sort -V | head -n "$MAX_CASES")
   if [ "${#CASE_FILES[@]}" -eq 0 ]; then
-    : > "$IN/empty.in"
-    CASE_FILES=("$IN/empty.in")
+    # No cases were sent: one run with empty stdin, reported as case 1 like any numbered case.
+    : > "$IN/1.in"
+    CASE_FILES=("$IN/1.in")
   fi
 
   for case_file in "${CASE_FILES[@]}"; do
