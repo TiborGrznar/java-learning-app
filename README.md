@@ -8,18 +8,18 @@ Bachelor's thesis project at the Faculty of Natural Sciences, Matej Bel Universi
 
 Work in progress.
 
-| Area | State |
-|------|-------|
-| Database schema (Flyway) and JPA entities | Done |
-| Authentication (JWT access token + rotating refresh token) | Done |
-| Administrator: school, user, class, module and quiz question management | Done |
-| Classes and student enrollment with a join code | Done |
-| Teacher: own classes and their join codes | Done |
-| Student: modules with step-by-step unlocking, theory, quiz | Done |
-| Rate limiting and request size limits | Done |
-| Teacher: student overview and deactivation of students | Planned |
-| Coding tasks, progress overviews and archiving | Planned |
-| Sandboxed execution of student code | Planned |
+| Area | State       |
+|------|-------------|
+| Database schema (Flyway) and JPA entities | Done        |
+| Authentication (JWT access token + rotating refresh token) | Done        |
+| Administrator: school, user, class, module and quiz question management | Done        |
+| Classes and student enrollment with a join code | Done        |
+| Teacher: own classes and their join codes | Done        |
+| Student: modules with step-by-step unlocking, theory, quiz | Done        |
+| Rate limiting and request size limits | Done        |
+| Teacher: student overview and deactivation of students | Planned     |
+| Coding tasks, progress overviews and archiving | Planned     |
+| Sandboxed execution of student code | Done           |
 | Frontend (React + TypeScript) | Not started |
 
 ## API
@@ -153,18 +153,109 @@ All values are configurable under `app.rate-limit.*`. A limit answers `429 RATE_
 
 Known trade-offs: anyone who knows an e-mail can block logins to it for the length of the window (only failures count and a successful login clears the counter, so the block is short). A school behind one public address shares the registration and general limits, raise them in the configuration if needed.
 
+## Code runner (sandbox)
+
+Student code is untrusted, so it never runs inside the backend. The `runner/` module is a separate Spring Boot service, the only part that talks to Docker. Every submission runs in its own disposable container, which is removed afterwards. The backend will call the runner over HTTP (the integration comes with the coding tasks); the runner only reports what the program printed, comparing it with the expected output is the backend's job.
+
+### Build the image and start the runner
+
+The runner never pulls images, so build the sandbox image first (and again after changing `runner/sandbox/launcher.sh` or the `Dockerfile`):
+
+```
+docker build --tag jla-sandbox:spike runner/sandbox
+```
+
+Set `RUNNER_TOKEN` (see the table above), load `.env` as in step 3 and start the runner:
+
+```
+cd runner
+.\mvnw.cmd spring-boot:run
+```
+
+It listens on `127.0.0.1:8081` only.
+
+### API
+
+`GET /health` needs no token: `200 {"status":"UP"}` while Docker answers, otherwise `503 {"status":"DOCKER_UNAVAILABLE"}`. Everything else needs the `X-Runner-Token` header.
+
+`POST /run`:
+
+```json
+{
+  "solutionSource": "public class Solution { ... }",
+  "driverSource": "public class Main { ... }",
+  "caseInputs": ["3\n", "5\n"]
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `solutionSource` | The student's `Solution.java`, required |
+| `driverSource` | Optional `Main.java` written by the task author; when present it is the entry point, otherwise `Solution` is |
+| `caseInputs` | Stdin of each case, at most 20. Without any, the program runs once with empty stdin (reported as case 1) |
+
+Response `200`:
+
+```json
+{
+  "compile": { "success": true, "timedOut": false, "message": "" },
+  "cases": [
+    { "number": 1, "status": "OK", "millis": 120, "stdout": "9\n", "message": "" }
+  ]
+}
+```
+
+`status` is `OK`, `RUNTIME_ERROR`, `TIMEOUT` or `OUT_OF_MEMORY`. `stdout` is filled only for `OK`. If the compilation fails, `compile.message` holds the compiler output and `cases` is empty. All messages are cleaned before they leave the runner (JVM log lines, internal paths and control characters are removed, the length is limited).
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | `INVALID_REQUEST` | Malformed JSON, blank source, too many cases, or input over the size limits |
+| 401 | `UNAUTHORIZED` | Missing or wrong token |
+| 413 | `PAYLOAD_TOO_LARGE` | Request body over the limit (6 times the archive limit plus 16 KiB, because JSON may escape every byte) |
+| 500 | `SANDBOX_UNAVAILABLE` | The sandbox itself failed (Docker missing, malformed result). Never a verdict on the student's code, the reason goes only to the log |
+| 503 | `SANDBOX_BUSY` | All slots and the queue are taken, retry after the `Retry-After` header |
+
+### Isolation
+
+Each container starts with: no network (`--network none`), read-only root file system, all capabilities dropped except those the launcher needs to hand the program to an unprivileged user, `no-new-privileges`, 512 MB of memory without swap, one CPU, at most 128 processes, non-executable tmpfs for the scratch directories, no log copy on the host. The student's program runs as an unprivileged user with a 64 MB heap and a clean environment, the compiler as another one, and neither can read the launcher's files. These flags are fixed in `DockerRunCommand` and are not configurable on purpose, so a configuration mistake cannot weaken them.
+
+The result is returned as length-prefixed frames, so a program that prints something that looks like a frame cannot forge a result. A container that stays behind is removed by name after each run and by a reaper at startup and every minute.
+
+### Configuration
+
+In `runner/src/main/resources/application.yaml` under `runner.sandbox`:
+
+| Key | Default |
+|-----|---------|
+| `compile-timeout-seconds` | 10 |
+| `run-timeout-seconds` (per case) | 5 |
+| `max-output-bytes` (per output stream) | 65536 |
+| `max-cases` | 20 |
+| `capacity.concurrency` (containers at once, 0 = half of the CPU cores) | 0 |
+| `capacity.queue` (requests waiting for a slot) | 10 |
+| `capacity.max-source-bytes` / `max-case-input-bytes` / `max-archive-bytes` | 64 KiB / 64 KiB / 1 MiB |
+
+### Tests
+
+The unit tests need no Docker. `DockerSandboxIntegrationTest` and `SandboxAttackIntegrationTest` (a corpus of hostile programs: memory and thread exhaustion, fork bomb, reading secret files, writing outside the scratch space, network access, forged result frames, output floods) run real containers. They skip themselves when Docker or the image is missing; the CI job `sandbox` builds the image and fails if any of them was skipped.
+
+### Before production
+
+Docker Desktop is enough for development. In production run Docker rootless or use gVisor, pin the image to a digest, and keep the Docker socket reachable only by the runner process: access to it is equivalent to root on the host.
+
 ## Tech stack
 
 - **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, Lombok, Maven
 - **Database:** MySQL 8.4 LTS (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
+- - **Code runner:** a separate Spring Boot service (`runner/`) that runs student code in disposable Docker containers
 
 Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
 
 ## Prerequisites
 
 - JDK 25
-- Docker (for the local MySQL container and for the tests, which start their own MySQL container)
+- Docker (for the local MySQL container, for the tests, which start their own MySQL container, and for the code runner)
 - Git
 
 Maven is not required, the repository contains the Maven Wrapper.
@@ -194,6 +285,9 @@ Fill in the values in `.env` (it is git-ignored and must never be committed):
 | `ADMIN_NAME` | Optional, first name of the first administrator (default `Admin`) |
 | `ADMIN_SURNAME` | Optional, surname of the first administrator (default `Administrátor`) |
 | `RATE_LIMIT_TRUSTED_PROXIES` | Optional, comma separated addresses of reverse proxies whose `X-Forwarded-For` header is believed (default empty: never) |
+| `RUNNER_TOKEN` | Shared secret between the backend and the code runner, at least 32 characters. Required to start the runner, there is no default |
+| `RUNNER_PORT` | Optional, port of the runner (default `8081`) |
+| `RUNNER_BIND_ADDRESS` | Optional, address the runner listens on (default `127.0.0.1`, keep it that way) |
 
 Generate a `JWT_SECRET` (PowerShell):
 
@@ -234,7 +328,7 @@ The tests need a running Docker, nothing else: no database container from step 2
 
 ## Continuous integration
 
-GitHub Actions (`.github/workflows/ci.yml`) builds the backend and runs all tests on every push to any branch, on pull requests to `main` and on demand. The job needs no database service and no secrets: the tests start their own MySQL container with Testcontainers (Docker is preinstalled on the runner) and use the test-only configuration from `src/test/resources`. A newer run of the same branch or pull request cancels the older one, runs on `main` are never cancelled.
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to any branch, on pull requests to `main` and on demand. Three jobs run in parallel: `backend` (build and all tests, the integration tests start their own MySQL container with Testcontainers and use the test-only configuration from `src/test/resources`, so no database service and no secrets are needed), `runner` (build and unit tests) and `sandbox` (builds the sandbox image and runs the tests that start real containers; it fails if any of them was skipped). Docker is preinstalled on the runner. A newer run of the same branch or pull request cancels the older one, runs on `main` are never cancelled.
 
 ## First administrator
 
@@ -295,6 +389,9 @@ Never put the real administrator password into shell commands or tools such as P
 │       │       ├── application.yaml
 │       │       └── db/migration/ Flyway migrations (V1 to V6)
 │       └── test/             unit and integration tests, testsupport/ holds the Testcontainers setup and shared fixtures
+├── runner/               Code runner service (Spring Boot)
+│   ├── sandbox/              Dockerfile and launcher.sh of the sandbox image
+│   └── src/                  run/ (POST /run), sandbox/ (docker, config, exception, result), security/, health/
 ├── docker-compose.yml    local MySQL
 └── .env.example          template of required environment variables
 ```

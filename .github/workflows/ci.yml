@@ -36,3 +36,56 @@ jobs:
       - name: Build and test
         working-directory: backend
         run: sh ./mvnw -B -ntp verify
+
+  runner:
+    name: Runner build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # The tests supply their own throwaway token. Docker is preinstalled on the runner for the
+      # sandbox tests that arrive with the Docker integration.
+      - name: Build and test
+        working-directory: runner
+        run: sh ./mvnw -B -ntp verify
+
+  sandbox:
+    name: Sandbox tests with real containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # The runner never pulls images, so the image is built here under the tag the tests use.
+      - name: Build the sandbox image
+        run: docker build --tag jla-sandbox:spike runner/sandbox
+
+      # Only the tests that start containers. They skip themselves when the image is missing, so the
+      # next step makes sure that did not happen.
+      - name: Run the sandbox tests
+        working-directory: runner
+        run: sh ./mvnw -B -ntp test -Dtest='DockerSandboxIntegrationTest,SandboxAttackIntegrationTest'
+
+      - name: Fail if a sandbox test was skipped
+        run: |
+          ls runner/target/surefire-reports/TEST-*SandboxIntegrationTest.xml \
+             runner/target/surefire-reports/TEST-*SandboxAttackIntegrationTest.xml
+          if grep -l '<skipped' runner/target/surefire-reports/TEST-*.xml; then
+            echo "A sandbox test was skipped, the image or Docker was not available"
+            exit 1
+          fi
