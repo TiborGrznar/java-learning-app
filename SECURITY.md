@@ -16,7 +16,7 @@ Of particular interest:
 
 - authentication and token handling (JWT access and refresh tokens),
 - authorization between roles (student, teacher, administrator),
-- the code execution sandbox (`runner`), once it is merged.
+- the code execution sandbox (`runner`).
 
 ## Supported versions
 
