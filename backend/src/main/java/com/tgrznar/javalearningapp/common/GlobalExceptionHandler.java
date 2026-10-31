@@ -6,6 +6,8 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.coderunner.CodeRunnerBusyException;
+import com.tgrznar.javalearningapp.coderunner.CodeRunnerUnavailableException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskHasResultsException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotFoundException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotReadyException;
@@ -95,6 +97,8 @@ import java.util.Map;
  * MODULE_REQUIRES_ACTIVE_TASK    409     an active module needs an active coding task: it cannot be activated without one, and its last active task cannot be deactivated or deleted
  * CODING_TASK_NOT_READY          409     the task cannot be activated without a reference solution and at least one test case, send the admin to the task form
  * CODING_TASK_HAS_RESULTS        409     students have submitted solutions to the task, it cannot be deleted, offer deactivation instead
+ * CODE_RUNNER_BUSY               503     the code runner is busy, the Retry-After header says how long to wait, offer a retry button
+ * CODE_RUNNER_UNAVAILABLE        500     the code runner failed or cannot be reached, a server fault (details only in the server log), show a generic message
  * BAD_REQUEST                    400     a path or query value has the wrong type (e.g. text where a number is expected), a client bug
  * NOT_FOUND, METHOD_NOT_ALLOWED, ...      framework errors keep their HTTP status, code is the status name (UNSUPPORTED_MEDIA_TYPE, ...), a client bug
  * INTERNAL_ERROR                 500     unexpected server error, show a generic message, details are only in the server log
@@ -262,6 +266,24 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleCodingTaskHasResults() {
         return ErrorResponse.of("CODING_TASK_HAS_RESULTS",
                 "Úloha má odovzdané riešenia a nemožno ju zmazať. Deaktivujte ju");
+    }
+
+    /** 503 CODE_RUNNER_BUSY: the sandbox has no free capacity right now; the submission was not evaluated. */
+    @ExceptionHandler(CodeRunnerBusyException.class)
+    public ResponseEntity<ErrorResponse> handleCodeRunnerBusy(CodeRunnerBusyException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                .body(ErrorResponse.of("CODE_RUNNER_BUSY",
+                        "Vyhodnocovanie kódu je momentálne preťažené. Skúste to o chvíľu znova"));
+    }
+
+    /** 500 CODE_RUNNER_UNAVAILABLE: the runner is down, misconfigured or sent a broken answer. */
+    @ExceptionHandler(CodeRunnerUnavailableException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ErrorResponse handleCodeRunnerUnavailable(CodeRunnerUnavailableException e) {
+        log.error("Code runner unavailable", e);
+        return ErrorResponse.of("CODE_RUNNER_UNAVAILABLE",
+                "Kód sa teraz nepodarilo vyhodnotiť. Skúste to znova neskôr");
     }
 
     /** 403 MODULE_LOCKED: the student has not passed the quiz of the previous module yet. */
