@@ -59,6 +59,12 @@ public class CodingResult {
     @Column(name = "error_message")
     private String errorMessage;
 
+    @Column(name = "passed_cases")
+    private Integer passedCases;
+
+    @Column(name = "total_cases")
+    private Integer totalCases;
+
     @CreationTimestamp
     @Column(name = "executed_at", nullable = false, updatable = false)
     private Instant executedAt;
