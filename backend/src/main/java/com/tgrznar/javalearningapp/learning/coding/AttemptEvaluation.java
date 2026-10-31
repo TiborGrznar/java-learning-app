@@ -11,7 +11,7 @@ import java.util.List;
  * @param passedCases  number of passed cases
  * @param totalCases   number of cases of the task
  * @param errorMessage what the student may read about the failure: the compiler message, or the message
- *                     of the first failing visible case; null when there is nothing to show
+ *                     of the first failing case (for a hidden case only the safe one); null when there is nothing to show
  * @param actualOutput output of the first failing visible case that ran; null otherwise
  * @param cases        outcomes per case, empty when the code did not compile
  */

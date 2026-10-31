@@ -6,6 +6,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Turns the answer of the code runner into a verdict. The comparison with the expected output happens
@@ -15,9 +18,14 @@ import java.util.List;
  * when the compilation itself timed out); otherwise the status of the first failing case in the order
  * of the cases (TIMEOUT, RUNTIME_ERROR or FAILED). Running out of memory counts as a runtime error.
  * <p>
- * What the student may see is decided here: a hidden case yields only its number and verdict, never a
- * message or an output, and nothing derived from a hidden case ends up in {@link AttemptEvaluation#errorMessage()}
- * or {@link AttemptEvaluation#actualOutput()}.
+ * What the student may see is decided here. A visible case shows the message of the runner and, when
+ * the output was wrong, what the program printed. A hidden case never shows its output. After a crash
+ * it shows only a fixed text (timeout, out of memory) or a safe summary of the exception: the type, taken
+ * from a short list of well-known JDK exceptions, and the line in the student's own file. The text of the
+ * exception is never shown, because the program reads the hidden input and could print it into the
+ * exception. The student controls everything the program writes, so anything taken from it can carry a few
+ * bits of information; this is limited to a choice from the list and a line inside the student's own file,
+ * which is no more than the verdict itself tells.
  */
 @Component
 public class AttemptEvaluator {
@@ -27,12 +35,38 @@ public class AttemptEvaluator {
     static final String OUT_OF_MEMORY_MESSAGE = "Program vyčerpal pamäť, ktorú mal k dispozícii";
     static final String RUNTIME_ERROR_MESSAGE = "Program skončil chybou";
 
+    private static final Set<String> KNOWN_EXCEPTIONS = Set.of(
+            "java.lang.ArithmeticException",
+            "java.lang.ArrayIndexOutOfBoundsException",
+            "java.lang.ArrayStoreException",
+            "java.lang.ClassCastException",
+            "java.lang.IllegalArgumentException",
+            "java.lang.IllegalStateException",
+            "java.lang.IndexOutOfBoundsException",
+            "java.lang.NegativeArraySizeException",
+            "java.lang.NullPointerException",
+            "java.lang.NumberFormatException",
+            "java.lang.StackOverflowError",
+            "java.lang.StringIndexOutOfBoundsException",
+            "java.lang.UnsupportedOperationException",
+            "java.util.ConcurrentModificationException",
+            "java.util.EmptyStackException",
+            "java.util.InputMismatchException",
+            "java.util.NoSuchElementException");
+
+    private static final Pattern EXCEPTION_LINE = Pattern.compile(
+            "(?m)^Exception in thread \"[^\"\\r\\n]{1,64}\" (java\\.(?:lang|util)\\.[A-Z][A-Za-z]{0,60})(?=[:\\s]|$)");
+
+    private static final Pattern STUDENT_FRAME = Pattern.compile(
+            "(?m)^\\s*at Solution\\.[\\w$<>]+\\(Solution\\.java:(\\d{1,5})\\)");
+
     /**
-     * @param response the answer of the runner, already verified by the runner client
-     * @param expected the cases of the task, in order, numbered 1..n
+     * @param response          the answer of the runner, already verified by the runner client
+     * @param expected          the cases of the task, in order, numbered 1..n
+     * @param solutionLineCount number of lines of the submitted code, a line number outside of it is never shown
      * @throws IllegalArgumentException when a successful compilation does not come with exactly one result per case
      */
-    public AttemptEvaluation evaluate(RunnerResponse response, List<CaseExpectation> expected) {
+    public AttemptEvaluation evaluate(RunnerResponse response, List<CaseExpectation> expected, int solutionLineCount) {
         int total = expected.size();
         RunnerResponse.Compile compile = response.compile();
         if (!compile.success()) {
@@ -54,7 +88,7 @@ public class AttemptEvaluator {
             if (result.number() != expectation.number()) {
                 throw new IllegalArgumentException("Case result " + result.number() + " does not match case " + expectation.number());
             }
-            CaseOutcome outcome = outcomeOf(expectation, result);
+            CaseOutcome outcome = outcomeOf(expectation, result, solutionLineCount);
             outcomes.add(outcome);
             if (outcome.verdict() == CaseVerdict.PASSED) {
                 passed++;
@@ -77,7 +111,8 @@ public class AttemptEvaluator {
         return new AttemptEvaluation(CodingResultStatus.COMPILE_ERROR, 0, total, message, null, List.of());
     }
 
-    private static CaseOutcome outcomeOf(CaseExpectation expectation, RunnerResponse.CaseResult result) {
+    private static CaseOutcome outcomeOf(CaseExpectation expectation, RunnerResponse.CaseResult result, int solutionLineCount) {
+        boolean hidden = expectation.hidden();
         CaseVerdict verdict;
         String message = null;
         String actualOutput = null;
@@ -88,7 +123,7 @@ public class AttemptEvaluator {
                     verdict = CaseVerdict.PASSED;
                 } else {
                     verdict = CaseVerdict.FAILED;
-                    actualOutput = stdout;
+                    actualOutput = hidden ? null : stdout;
                 }
             }
             case TIMEOUT -> {
@@ -101,14 +136,36 @@ public class AttemptEvaluator {
             }
             case RUNTIME_ERROR -> {
                 verdict = CaseVerdict.RUNTIME_ERROR;
-                message = result.message() == null || result.message().isBlank() ? RUNTIME_ERROR_MESSAGE : result.message();
+                message = hidden
+                        ? safeSummary(result.message(), solutionLineCount)
+                        : (result.message() == null || result.message().isBlank() ? RUNTIME_ERROR_MESSAGE : result.message());
             }
             default -> throw new IllegalArgumentException("Unknown case status " + result.status());
         }
-        if (expectation.hidden()) {
-            return new CaseOutcome(expectation.number(), true, verdict, null, null);
+        return new CaseOutcome(expectation.number(), hidden, verdict, message, actualOutput);
+    }
+
+    /**
+     * The exception type (only a well-known JDK one) and the line in the student's own file, never the text
+     * of the exception. Anything that does not look exactly right gives the generic message.
+     */
+    private static String safeSummary(String runnerMessage, int solutionLineCount) {
+        if (runnerMessage == null) {
+            return RUNTIME_ERROR_MESSAGE;
         }
-        return new CaseOutcome(expectation.number(), false, verdict, message, actualOutput);
+        Matcher type = EXCEPTION_LINE.matcher(runnerMessage);
+        if (!type.find() || !KNOWN_EXCEPTIONS.contains(type.group(1))) {
+            return RUNTIME_ERROR_MESSAGE;
+        }
+        String name = type.group(1).substring(type.group(1).lastIndexOf('.') + 1);
+        Matcher frame = STUDENT_FRAME.matcher(runnerMessage);
+        if (frame.find()) {
+            int line = Integer.parseInt(frame.group(1));
+            if (line >= 1 && line <= solutionLineCount) {
+                return "Výnimka " + name + " (Solution.java, riadok " + line + ")";
+            }
+        }
+        return "Výnimka " + name;
     }
 
     private static CodingResultStatus statusOf(CaseVerdict verdict) {
