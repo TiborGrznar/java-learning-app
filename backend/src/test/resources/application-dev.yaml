@@ -8,6 +8,9 @@ app:
   jwt:
     # Throwaway signing key for tests only (base64, 42 bytes). Never use it outside the tests.
     secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQtZG8tbm90LXVzZS1lbHNld2hlcmUh
+  runner:
+    # Throwaway token for tests only (39 characters). The real runner is never called from the tests.
+    token: test-only-runner-token-0123456789abcdef
   rate-limit:
     login-per-ip: { max: 100000 }
     register-per-ip: { max: 100000 }
