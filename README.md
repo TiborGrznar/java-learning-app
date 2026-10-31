@@ -18,7 +18,8 @@ Work in progress.
 | Student: modules with step-by-step unlocking, theory, quiz | Done        |
 | Rate limiting and request size limits | Done        |
 | Teacher: student overview and deactivation of students | Planned     |
-| Coding tasks, progress overviews and archiving | Planned     |
+| Administrator: coding tasks and their test cases | Done        |
+| Student: solving coding tasks, progress overviews and archiving | Planned     |
 | Sandboxed execution of student code | Done           |
 | Frontend (React + TypeScript) | Not started |
 
@@ -45,16 +46,24 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | PATCH | `/users/{id}/role` | `ADMIN` | Changes the role. Changing to `TEACHER` needs a school. A student who changes role leaves the class |
 | PATCH | `/users/{id}/active` | `ADMIN` | Deactivates or reactivates an account. Deactivation also revokes all refresh tokens of the user |
 | DELETE | `/users/{id}?confirmEmail=...` | `ADMIN` | Deletes a student for good (`204`) together with their progress, results and tokens. `confirmEmail` must repeat the student's e-mail. Teachers and administrators cannot be deleted |
-| POST | `/modules` | `ADMIN` | Creates a learning module |
+| POST | `/modules` | `ADMIN` | Creates a learning module (`201`). A new module is inactive until it gets an active coding task |
 | GET | `/modules` | `ADMIN` | Lists modules |
 | GET | `/modules/{id}` | `ADMIN` | Detail of a module |
 | PUT | `/modules/{id}` | `ADMIN` | Replaces a module |
-| PATCH | `/modules/{id}/active` | `ADMIN` | Deactivates or reactivates a module (modules are never deleted) |
+| PATCH | `/modules/{id}/active` | `ADMIN` | Deactivates or reactivates a module (modules are never deleted). Activation needs at least one active coding task, otherwise `409 MODULE_REQUIRES_ACTIVE_TASK` |
 | POST | `/modules/{moduleId}/questions` | `ADMIN` | Adds a quiz question to a module |
 | GET | `/modules/{moduleId}/questions` | `ADMIN` | Lists the questions of a module |
 | GET | `/modules/{moduleId}/questions/{id}` | `ADMIN` | Detail of a question |
 | PUT | `/modules/{moduleId}/questions/{id}` | `ADMIN` | Replaces a question |
 | DELETE | `/modules/{moduleId}/questions/{id}` | `ADMIN` | Deletes a question |
+| POST | `/modules/{moduleId}/coding-tasks` | `ADMIN` | Adds a coding task (`201`). A new task is inactive |
+| GET | `/modules/{moduleId}/coding-tasks` | `ADMIN` | Lists the tasks of a module in course order with the number of test cases, without any code |
+| GET | `/modules/{moduleId}/coding-tasks/{id}` | `ADMIN` | Detail of a task, including template, driver and reference solution |
+| PUT | `/modules/{moduleId}/coding-tasks/{id}` | `ADMIN` | Replaces the content of a task, the active flag stays |
+| PATCH | `/modules/{moduleId}/coding-tasks/{id}/active` | `ADMIN` | Activates or deactivates a task. Activation needs a reference solution and at least one test case (`409 CODING_TASK_NOT_READY`). The last active task of an active module cannot be deactivated (`409 MODULE_REQUIRES_ACTIVE_TASK`) |
+| DELETE | `/modules/{moduleId}/coding-tasks/{id}` | `ADMIN` | Deletes a task together with its test cases (`204`). A task with submitted results answers `409 CODING_TASK_HAS_RESULTS` |
+| GET | `/modules/{moduleId}/coding-tasks/{id}/cases` | `ADMIN` | Lists the test cases with their expected outputs |
+| PUT | `/modules/{moduleId}/coding-tasks/{id}/cases` | `ADMIN` | Replaces all test cases of a task (1 to 20). The case number is the position in the list |
 | POST | `/classes` | `ADMIN` | Creates a class with a generated join code |
 | GET | `/classes` | `ADMIN` | Lists classes. Filters `schoolId`, `teacherId`, `active` |
 | GET | `/classes/{id}` | `ADMIN` | Detail of a class, including the join code |
@@ -70,6 +79,8 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | POST | `/learning/modules/{id}/theory-completed` | `STUDENT` in a class | Marks the theory as read and returns the module |
 | GET | `/learning/modules/{moduleId}/quiz` | `STUDENT` in a class | Draws a quiz of up to ten questions and a quiz token (`Cache-Control: no-store`). The theory must be read first |
 | POST | `/learning/modules/{moduleId}/quiz/submissions` | `STUDENT` in a class | Evaluates the answers of a drawn quiz. A quiz token works for one submission only. After a failed attempt the answers are marked right or wrong, the correct options are shown after a pass |
+
+Rules of coding tasks: a task belongs to one module and has a description, an optional template, an optional driver (`Main.java`), a reference solution and 1 to 20 test cases. Each code field and each case field is at most 16384 characters. The driver and the reference solution are written by the administrator and run only in the sandbox. A case is hidden or visible, and expected outputs, the driver and the reference solution are never part of a student response. A new task is inactive and can be activated once it has a reference solution and at least one case. A new module is inactive too, and an active module always has at least one active task: it cannot be activated without one, and the last active task of an active module can be neither deactivated nor deleted. A task that students have submitted solutions to is never deleted, only deactivated, so the history stays.
 
 Rules of user management: an administrator cannot change their own role or deactivate themselves, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them. There is no password change yet, so the temporary password of a new teacher stays valid until that is implemented.
 
@@ -113,6 +124,7 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 404 | `USER_NOT_FOUND` | The user does not exist |
 | 404 | `MODULE_NOT_FOUND` | The module does not exist or is deactivated |
 | 404 | `QUESTION_NOT_FOUND` | The question does not exist in the given module |
+| 404 | `CODING_TASK_NOT_FOUND` | The coding task does not exist in the given module |
 | 404 | `CLASS_NOT_FOUND` | The class does not exist (or belongs to another teacher) |
 | 404 | `INVALID_JOIN_CODE` | No active class of an active school has this join code |
 | 409 | `EMAIL_ALREADY_EXISTS` | The e-mail is already registered |
@@ -129,6 +141,9 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 409 | `QUIZ_NOT_AVAILABLE` | The module has no quiz questions |
 | 409 | `QUIZ_OUTDATED` | The quiz expired or one of its questions was deleted, load it again |
 | 409 | `QUIZ_ALREADY_SUBMITTED` | The quiz token was already used for a submission (double click, retry), load the quiz again |
+| 409 | `MODULE_REQUIRES_ACTIVE_TASK` | An active module needs an active coding task: it cannot be activated without one, and its last active task cannot be deactivated or deleted |
+| 409 | `CODING_TASK_NOT_READY` | The task cannot be activated without a reference solution and at least one test case |
+| 409 | `CODING_TASK_HAS_RESULTS` | Students have submitted solutions to the task, it cannot be deleted, deactivate it instead |
 | 429 | `TOO_MANY_ATTEMPTS` | Too many failed enrollment attempts, the `Retry-After` header says how many seconds to wait |
 | 429 | `RATE_LIMITED` | Too many requests from this address, for this e-mail or from this student, the `Retry-After` header says how many seconds to wait |
 
@@ -149,7 +164,7 @@ All values are configurable under `app.rate-limit.*`. A limit answers `429 RATE_
 
 **Client IP.** By default the address of the TCP connection is used. `X-Forwarded-For` is believed only when the connection comes from a proxy listed in `RATE_LIMIT_TRUSTED_PROXIES` (exact addresses, comma separated). The rightmost entry that is not a trusted proxy is the client. Set it before deploying behind a reverse proxy, otherwise all users share the proxy's address.
 
-**Body size.** Request bodies under `/api/` are limited to 16 KiB, and to 1 MiB under the prefixes in `app.rate-limit.large-body-prefixes` (module theory). Larger bodies get `413 PAYLOAD_TOO_LARGE`, including bodies sent without a `Content-Length`.
+**Body size.** Request bodies under `/api/` are limited to 16 KiB, and to 1 MiB under the prefixes in `app.rate-limit.large-body-prefixes` (module theory, coding tasks and test cases). Larger bodies get `413 PAYLOAD_TOO_LARGE`, including bodies sent without a `Content-Length`.
 
 Known trade-offs: anyone who knows an e-mail can block logins to it for the length of the window (only failures count and a successful login clears the counter, so the block is short). A school behind one public address shares the registration and general limits, raise them in the configuration if needed.
 
@@ -363,6 +378,8 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   │   ├── exception/    authentication exceptions
 │       │   │   │   ├── security/     JWT service, filter, security config, 401/403 JSON handlers
 │       │   │   │   └── token/        refresh token entity, repository and service
+│       │   │   ├── codingtask/   coding tasks and test cases (admin/ holds their management)
+│       │   │   └── quizresult/ codingresult/ userprogress/
 │       │   │   ├── common/       global exception handler, error body, page response, MVC configuration
 │       │   │   ├── ratelimit/    sliding-window limiter, per-IP filter, body size filter, client IP resolution
 │       │   │   ├── user/
@@ -387,7 +404,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   └── codingtask/ quizresult/ codingresult/ userprogress/
 │       │   └── resources/
 │       │       ├── application.yaml
-│       │       └── db/migration/ Flyway migrations (V1 to V6)
+│       │       └── db/migration/ Flyway migrations (V1 to V7)
 │       └── test/             unit and integration tests, testsupport/ holds the Testcontainers setup and shared fixtures
 ├── runner/               Code runner service (Spring Boot)
 │   ├── sandbox/              Dockerfile and launcher.sh of the sandbox image
@@ -400,7 +417,7 @@ Tests lie in the package of the tested class (they need package-private access i
 
 ## Database migrations
 
-Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V7__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
+Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V8__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
 
 ## Development workflow
 
