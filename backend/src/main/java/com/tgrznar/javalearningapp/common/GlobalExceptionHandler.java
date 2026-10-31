@@ -6,6 +6,9 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskHasResultsException;
+import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotFoundException;
+import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotReadyException;
 import com.tgrznar.javalearningapp.learning.exception.ModuleLockedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizTokenException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizAnswersException;
@@ -14,6 +17,7 @@ import com.tgrznar.javalearningapp.learning.quiz.exception.QuizNotAvailableExcep
 import com.tgrznar.javalearningapp.learning.quiz.exception.QuizOutdatedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.TheoryNotCompletedException;
 import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
+import com.tgrznar.javalearningapp.module.exception.ModuleRequiresActiveTaskException;
 import com.tgrznar.javalearningapp.quizquestion.exception.QuestionNotFoundException;
 import com.tgrznar.javalearningapp.ratelimit.RateLimitExceededException;
 import com.tgrznar.javalearningapp.ratelimit.RequestBodyTooLargeException;
@@ -68,6 +72,7 @@ import java.util.Map;
  * USER_NOT_FOUND                 404     user with the given id does not exist, show a message
  * MODULE_NOT_FOUND               404     module with the given id does not exist, show a message
  * QUESTION_NOT_FOUND             404     question does not exist in the given module, show a message
+ * CODING_TASK_NOT_FOUND          404     coding task does not exist in the given module, show a message
  * CLASS_NOT_FOUND                404     class with the given id does not exist, show a message
  * CLASS_NAME_ALREADY_EXISTS      409     class name is taken in this school, show in the class form
  * EMAIL_ALREADY_EXISTS           409     e-mail is taken, show in the registration or user form
@@ -87,6 +92,9 @@ import java.util.Map;
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
  * QUIZ_OUTDATED                  409     the quiz expired or one of its questions was deleted, reload it and start again
  * QUIZ_ALREADY_SUBMITTED         409     the quiz token was already used for a submission (double click, retry, replay), load the quiz again
+ * MODULE_REQUIRES_ACTIVE_TASK    409     an active module needs an active coding task: it cannot be activated without one, and its last active task cannot be deactivated or deleted
+ * CODING_TASK_NOT_READY          409     the task cannot be activated without a reference solution and at least one test case, send the admin to the task form
+ * CODING_TASK_HAS_RESULTS        409     students have submitted solutions to the task, it cannot be deleted, offer deactivation instead
  * BAD_REQUEST                    400     a path or query value has the wrong type (e.g. text where a number is expected), a client bug
  * NOT_FOUND, METHOD_NOT_ALLOWED, ...      framework errors keep their HTTP status, code is the status name (UNSUPPORTED_MEDIA_TYPE, ...), a client bug
  * INTERNAL_ERROR                 500     unexpected server error, show a generic message, details are only in the server log
@@ -223,6 +231,37 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ErrorResponse handleQuestionNotFound() {
         return ErrorResponse.of("QUESTION_NOT_FOUND", "Otázka neexistuje");
+    }
+
+    /** 404 CODING_TASK_NOT_FOUND: no coding task with the requested id in the requested module. */
+    @ExceptionHandler(CodingTaskNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleCodingTaskNotFound() {
+        return ErrorResponse.of("CODING_TASK_NOT_FOUND", "Úloha neexistuje");
+    }
+
+    /** 409 MODULE_REQUIRES_ACTIVE_TASK: an active module must keep at least one active coding task. */
+    @ExceptionHandler(ModuleRequiresActiveTaskException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleModuleRequiresActiveTask() {
+        return ErrorResponse.of("MODULE_REQUIRES_ACTIVE_TASK",
+                "Aktívny modul musí mať aspoň jednu aktívnu úlohu. Najprv aktivujte inú úlohu");
+    }
+
+    /** 409 CODING_TASK_NOT_READY: activation needs a reference solution and at least one test case. */
+    @ExceptionHandler(CodingTaskNotReadyException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleCodingTaskNotReady() {
+        return ErrorResponse.of("CODING_TASK_NOT_READY",
+                "Úloha potrebuje referenčné riešenie a aspoň jeden testovací prípad");
+    }
+
+    /** 409 CODING_TASK_HAS_RESULTS: students submitted solutions, so the task can only be deactivated. */
+    @ExceptionHandler(CodingTaskHasResultsException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleCodingTaskHasResults() {
+        return ErrorResponse.of("CODING_TASK_HAS_RESULTS",
+                "Úloha má odovzdané riešenia a nemožno ju zmazať. Deaktivujte ju");
     }
 
     /** 403 MODULE_LOCKED: the student has not passed the quiz of the previous module yet. */

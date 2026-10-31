@@ -1,11 +1,13 @@
 package com.tgrznar.javalearningapp.module.admin;
 
+import com.tgrznar.javalearningapp.codingtask.CodingTaskRepository;
 import com.tgrznar.javalearningapp.module.CourseModule;
 import com.tgrznar.javalearningapp.module.CourseModuleRepository;
 import com.tgrznar.javalearningapp.module.dto.ModuleRequest;
 import com.tgrznar.javalearningapp.module.dto.ModuleResponse;
 import com.tgrznar.javalearningapp.module.dto.ModuleSummary;
 import com.tgrznar.javalearningapp.module.exception.ModuleNotFoundException;
+import com.tgrznar.javalearningapp.module.exception.ModuleRequiresActiveTaskException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,6 +34,9 @@ class AdminModuleServiceTest {
 
     @Mock
     private CourseModuleRepository moduleRepository;
+
+    @Mock
+    private CodingTaskRepository codingTaskRepository;
 
     @InjectMocks
     private AdminModuleService service;
@@ -50,7 +56,7 @@ class AdminModuleServiceTest {
         assertThat(saved.getDescription()).isNull();
         assertThat(saved.getTheoryContent()).isNull();
         assertThat(saved.getOrderNumber()).isEqualTo(3);
-        assertThat(saved.isActive()).isTrue();
+        assertThat(saved.isActive()).isFalse();
     }
 
     @Test
@@ -78,7 +84,7 @@ class AdminModuleServiceTest {
         assertThat(response.id()).isEqualTo(7L);
         assertThat(response.title()).isEqualTo("Uvod");
         assertThat(response.theoryContent()).isEqualTo("# Teoria");
-        assertThat(response.active()).isTrue();
+        assertThat(response.active()).isFalse();
     }
 
     // ---------- list ----------
@@ -160,16 +166,29 @@ class AdminModuleServiceTest {
         ModuleResponse response = service.setActive(5L, false, ADMIN_ID);
 
         assertThat(response.active()).isFalse();
+        verifyNoInteractions(codingTaskRepository);
     }
 
     @Test
     void setActive_reactivates() {
         when(moduleRepository.findById(5L)).thenReturn(Optional.of(module(5L, false)));
+        when(codingTaskRepository.existsByModuleIdAndActiveTrue(5L)).thenReturn(true);
         when(moduleRepository.saveAndFlush(any(CourseModule.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ModuleResponse response = service.setActive(5L, true, ADMIN_ID);
 
         assertThat(response.active()).isTrue();
+    }
+
+    @Test
+    void setActive_activateWithoutActiveTask_throwsAndSavesNothing() {
+        when(moduleRepository.findById(5L)).thenReturn(Optional.of(module(5L, false)));
+        when(codingTaskRepository.existsByModuleIdAndActiveTrue(5L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.setActive(5L, true, ADMIN_ID))
+                .isInstanceOf(ModuleRequiresActiveTaskException.class);
+
+        verify(moduleRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -180,6 +199,7 @@ class AdminModuleServiceTest {
 
         assertThat(response.active()).isTrue();
         verify(moduleRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(codingTaskRepository);
     }
 
     @Test

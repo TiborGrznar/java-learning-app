@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlywayMigrationIntegrationTest {
 
     private static final List<String> EXPECTED_TABLES = List.of(
-            "schools", "users", "modules", "quiz_questions", "coding_tasks",
+            "schools", "users", "modules", "quiz_questions", "coding_tasks", "coding_task_cases",
             "quiz_results", "user_progress", "coding_results", "refresh_tokens", "classes");
 
     @Autowired
@@ -60,13 +60,16 @@ class FlywayMigrationIntegrationTest {
     }
 
     /**
-     * Student data is deleted with the account (V5), every other foreign key stays RESTRICT.
+     * Student data is deleted with the account (V5) and the cases of a task with the task (V7),
+     * every other foreign key stays RESTRICT. A task that has results can therefore never be deleted.
      */
     @ParameterizedTest
     @CsvSource({
             "fk_user_progress_user, CASCADE",
             "fk_quiz_results_user, CASCADE",
             "fk_coding_results_user, CASCADE",
+            "fk_coding_task_cases_task, CASCADE",
+            "fk_coding_results_task, RESTRICT",
             "fk_classes_school, RESTRICT",
             "fk_classes_teacher, RESTRICT",
             "fk_users_class, RESTRICT"
@@ -78,5 +81,47 @@ class FlywayMigrationIntegrationTest {
                 String.class, constraint);
 
         assertThat(rule).isEqualTo(expectedRule);
+    }
+
+    /** V7 moves the expected output into the cases and adds the fields an administrator manages. */
+    @Test
+    void codingTasksHaveTheV7Columns() {
+        assertThat(columnsOf("coding_tasks"))
+                .contains("order_number", "driver_code", "reference_solution", "is_active")
+                .doesNotContain("expected_output");
+        assertThat(columnsOf("coding_task_cases"))
+                .contains("coding_task_id", "order_number", "input_text", "expected_output", "is_hidden");
+    }
+
+    @Test
+    void codingResultsHaveTheV7ColumnsAndIndex() {
+        assertThat(columnsOf("coding_results")).contains("passed_cases", "total_cases");
+
+        List<String> indexes = jdbcTemplate.queryForList(
+                "SELECT DISTINCT index_name FROM information_schema.statistics "
+                        + "WHERE table_schema = DATABASE() AND table_name = 'coding_results'",
+                String.class);
+
+        assertThat(indexes)
+                .contains("idx_coding_results_user_task_status")
+                .doesNotContain("idx_coding_results_user_task");
+    }
+
+    @Test
+    void caseOrderIsUniquePerTask() {
+        List<String> constraints = jdbcTemplate.queryForList(
+                "SELECT constraint_name FROM information_schema.table_constraints "
+                        + "WHERE table_schema = DATABASE() AND table_name = 'coding_task_cases' "
+                        + "AND constraint_type = 'UNIQUE'",
+                String.class);
+
+        assertThat(constraints).contains("uq_coding_task_cases_task_order");
+    }
+
+    private List<String> columnsOf(String table) {
+        return jdbcTemplate.queryForList(
+                "SELECT column_name FROM information_schema.columns "
+                        + "WHERE table_schema = DATABASE() AND table_name = ?",
+                String.class, table);
     }
 }

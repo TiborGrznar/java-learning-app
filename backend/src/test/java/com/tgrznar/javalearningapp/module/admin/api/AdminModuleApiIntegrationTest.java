@@ -2,6 +2,8 @@ package com.tgrznar.javalearningapp.module.admin.api;
 
 import com.jayway.jsonpath.JsonPath;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
+import com.tgrznar.javalearningapp.codingtask.CodingTask;
+import com.tgrznar.javalearningapp.codingtask.CodingTaskRepository;
 import com.tgrznar.javalearningapp.module.CourseModule;
 import com.tgrznar.javalearningapp.module.CourseModuleRepository;
 import com.tgrznar.javalearningapp.user.model.User;
@@ -53,6 +55,9 @@ class AdminModuleApiIntegrationTest {
 
     @Autowired
     private CourseModuleRepository moduleRepository;
+
+    @Autowired
+    private CodingTaskRepository codingTaskRepository;
 
     @Autowired
     private JwtService jwtService;
@@ -134,7 +139,7 @@ class AdminModuleApiIntegrationTest {
     // ---------- create ----------
 
     @Test
-    void create_returns201WithLocationAndFullBody() throws Exception {
+    void create_returns201WithLocationAndFullBodyAndStartsInactive() throws Exception {
         as(post(URL).contentType(MediaType.APPLICATION_JSON).content(json("Uvod do Javy", "Prvy modul", "# Uvod", 1)),
                 UserRole.ADMIN)
                 .andExpect(status().isCreated())
@@ -144,7 +149,7 @@ class AdminModuleApiIntegrationTest {
                 .andExpect(jsonPath("$.description").value("Prvy modul"))
                 .andExpect(jsonPath("$.theoryContent").value("# Uvod"))
                 .andExpect(jsonPath("$.orderNumber").value(1))
-                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.active").value(false))
                 .andExpect(jsonPath("$.createdAt").exists());
     }
 
@@ -327,6 +332,7 @@ class AdminModuleApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active").value(false));
         assertThat(moduleRepository.findById(module.getId()).orElseThrow().isActive()).isFalse();
+        saveTask(module, true);
 
         as(patch(url(module.getId()) + "/active").contentType(MediaType.APPLICATION_JSON).content("{\"active\":true}"),
                 UserRole.ADMIN)
@@ -354,6 +360,45 @@ class AdminModuleApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("MODULE_NOT_FOUND"));
     }
 
+    @Test
+    void setActive_activateWithoutAnyTask_returns409AndStaysInactive() throws Exception {
+        CourseModule module = saveModule("Module without tasks", 9_001, false);
+
+        as(patch(url(module.getId()) + "/active").contentType(MediaType.APPLICATION_JSON).content("{\"active\":true}"),
+                UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MODULE_REQUIRES_ACTIVE_TASK"));
+
+        assertThat(moduleRepository.findById(module.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void setActive_activateWithOnlyInactiveTask_returns409AndStaysInactive() throws Exception {
+        CourseModule module = saveModule("Module with a draft task", 9_001, false);
+        saveTask(module, false);
+
+        as(patch(url(module.getId()) + "/active").contentType(MediaType.APPLICATION_JSON).content("{\"active\":true}"),
+                UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MODULE_REQUIRES_ACTIVE_TASK"));
+
+        assertThat(moduleRepository.findById(module.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void setActive_newlyCreatedModuleCannotBeActivatedBeforeItHasAnActiveTask() throws Exception {
+        MvcResult created = as(post(URL).contentType(MediaType.APPLICATION_JSON).content(json("Novy", "Popis", "# Teoria", 1)),
+                UserRole.ADMIN)
+                .andExpect(status().isCreated())
+                .andReturn();
+        Number id = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+
+        as(patch(url(id.longValue()) + "/active").contentType(MediaType.APPLICATION_JSON).content("{\"active\":true}"),
+                UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MODULE_REQUIRES_ACTIVE_TASK"));
+    }
+
     // ---------- helpers ----------
 
     private ResultActions as(MockHttpServletRequestBuilder request, UserRole role) throws Exception {
@@ -373,6 +418,16 @@ class AdminModuleApiIntegrationTest {
         module.setOrderNumber(orderNumber);
         module.setActive(active);
         return moduleRepository.saveAndFlush(module);
+    }
+
+    private CodingTask saveTask(CourseModule module, boolean active) {
+        CodingTask task = new CodingTask();
+        task.setModule(module);
+        task.setTitle("Task of " + module.getTitle());
+        task.setOrderNumber(1);
+        task.setReferenceSolution("class Solution { }");
+        task.setActive(active);
+        return codingTaskRepository.saveAndFlush(task);
     }
 
     private static String url(Long id) {

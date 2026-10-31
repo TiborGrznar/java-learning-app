@@ -232,7 +232,7 @@ class AdminUserDeleteApiTest extends AdminUserApiTestSupport {
         jdbcTemplate.update("insert into user_progress (user_id, module_id) values (?, ?)", userId, moduleId);
         jdbcTemplate.update("insert into quiz_results (module_id, user_id, score, max_score) values (?, ?, 1, 2)",
                 moduleId, userId);
-        jdbcTemplate.update("insert into coding_tasks (module_id, title, expected_output) values (?, 'Task', 'out')",
+        jdbcTemplate.update("insert into coding_tasks (module_id, order_number, title) values (?, 1, 'Task')",
                 moduleId);
         jdbcTemplate.update("""
                 insert into coding_results (coding_task_id, user_id, submitted_code, status)
