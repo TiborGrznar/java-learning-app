@@ -14,7 +14,7 @@ public final class TestRateLimiters {
     public static RateLimiters unlimited() {
         RateLimitProperties.Rule rule = new RateLimitProperties.Rule(OFF, Duration.ofMinutes(15));
         return new RateLimiters(new RateLimitProperties(
-                rule, rule, rule, rule, rule, rule,
+                rule, rule, rule, rule, rule, rule, rule,
                 1000, List.of(), 16384, 1048576, List.of()));
     }
 }

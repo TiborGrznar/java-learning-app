@@ -13,7 +13,7 @@ final class TestRateLimitProperties {
 
     static RateLimitProperties create(int loginMax, int registerMax, int apiMax) {
         return new RateLimitProperties(
-                rule(loginMax), rule(registerMax), rule(OFF), rule(apiMax), rule(OFF), rule(OFF),
+                rule(loginMax), rule(registerMax), rule(OFF), rule(apiMax), rule(OFF), rule(OFF), rule(OFF),
                 1000, List.of(), 100, 1000, List.of("/api/v1/modules"));
     }
 

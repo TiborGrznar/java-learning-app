@@ -18,3 +18,4 @@ app:
     api-per-ip: { max: 100000 }
     login-failures-per-email: { max: 100000 }
     quiz-load-per-user: { max: 100000 }
+    coding-submit-per-user: { max: 100000 }
