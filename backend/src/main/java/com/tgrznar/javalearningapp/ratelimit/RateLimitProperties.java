@@ -18,6 +18,7 @@ import java.util.List;
  * @param apiPerIp             every other request under /api/v1/ per client IP (a new endpoint is limited by default)
  * @param loginFailuresPerEmail failed logins per normalized e-mail (any IP)
  * @param quizLoadPerUser      quiz loads per student
+ * @param codingSubmitPerUser   coding submissions per student
  * @param maxTrackedKeys       upper bound of tracked keys in each limiter (memory protection)
  * @param trustedProxies       exact addresses of reverse proxies whose X-Forwarded-For is believed; empty = never
  * @param maxBodyBytes         default limit of a request body
@@ -33,6 +34,7 @@ public record RateLimitProperties(
         @NotNull @Valid Rule apiPerIp,
         @NotNull @Valid Rule loginFailuresPerEmail,
         @NotNull @Valid Rule quizLoadPerUser,
+        @NotNull @Valid Rule codingSubmitPerUser,
         @Min(100) int maxTrackedKeys,
         List<String> trustedProxies,
         @Min(1024) long maxBodyBytes,

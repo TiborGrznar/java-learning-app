@@ -11,6 +11,7 @@ import com.tgrznar.javalearningapp.coderunner.CodeRunnerUnavailableException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskHasResultsException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotFoundException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotReadyException;
+import com.tgrznar.javalearningapp.learning.exception.SubmissionInProgressException;
 import com.tgrznar.javalearningapp.learning.exception.ModuleLockedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizTokenException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizAnswersException;
@@ -99,6 +100,7 @@ import java.util.Map;
  * CODING_TASK_HAS_RESULTS        409     students have submitted solutions to the task, it cannot be deleted, offer deactivation instead
  * CODE_RUNNER_BUSY               503     the code runner is busy, the Retry-After header says how long to wait, offer a retry button
  * CODE_RUNNER_UNAVAILABLE        500     the code runner failed or cannot be reached, a server fault (details only in the server log), show a generic message
+ * SUBMISSION_IN_PROGRESS         409     the student's previous submission is still being evaluated, wait for its result, do not retry in a loop
  * BAD_REQUEST                    400     a path or query value has the wrong type (e.g. text where a number is expected), a client bug
  * NOT_FOUND, METHOD_NOT_ALLOWED, ...      framework errors keep their HTTP status, code is the status name (UNSUPPORTED_MEDIA_TYPE, ...), a client bug
  * INTERNAL_ERROR                 500     unexpected server error, show a generic message, details are only in the server log
@@ -284,6 +286,14 @@ public class GlobalExceptionHandler {
         log.error("Code runner unavailable", e);
         return ErrorResponse.of("CODE_RUNNER_UNAVAILABLE",
                 "Kód sa teraz nepodarilo vyhodnotiť. Skúste to znova neskôr");
+    }
+
+    /** 409 SUBMISSION_IN_PROGRESS: only one submission per student is evaluated at a time. */
+    @ExceptionHandler(SubmissionInProgressException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleSubmissionInProgress() {
+        return ErrorResponse.of("SUBMISSION_IN_PROGRESS",
+                "Vaše predchádzajúce riešenie sa ešte vyhodnocuje. Počkajte na výsledok");
     }
 
     /** 403 MODULE_LOCKED: the student has not passed the quiz of the previous module yet. */

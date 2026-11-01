@@ -48,6 +48,8 @@ app:
     login-failures-per-email: { max: 5, window: 15m }
     # Quiz loads per student.
     quiz-load-per-user: { max: 20, window: 1m }
+    # Coding submissions per student. Every one occupies a container of the sandbox for seconds.
+    coding-submit-per-user: { max: 10, window: 1m }
     # Upper bound of tracked keys per limiter, protects memory against forged keys.
     max-tracked-keys: 10000
     # Exact addresses of reverse proxies whose X-Forwarded-For is believed (comma separated). Empty = never.
