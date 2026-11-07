@@ -20,6 +20,12 @@ public interface CodingTaskRepository extends JpaRepository<CodingTask, Long> {
 
     boolean existsByModuleIdAndActiveTrue(Long moduleId);
 
+    /** The active tasks of a module in the order students see them. */
+    List<CodingTask> findByModuleIdAndActiveTrueOrderByOrderNumberAscIdAsc(Long moduleId);
+
+    /** A student reaches only active tasks, and only through the module they belong to. */
+    Optional<CodingTask> findByIdAndModuleIdAndActiveTrue(Long id, Long moduleId);
+
     long countByModuleIdAndActiveTrue(Long moduleId);
 
     /** Number of submitted results of a task, from any student. */

@@ -38,6 +38,7 @@ import java.util.List;
 public class AdminCodingTaskController {
 
     private final AdminCodingTaskService adminCodingTaskService;
+    private final AdminCodingTaskActivationService activationService;
 
     @PostMapping
     public ResponseEntity<CodingTaskResponse> create(@PathVariable Long moduleId,
@@ -71,8 +72,7 @@ public class AdminCodingTaskController {
                                         @PathVariable Long id,
                                         @Valid @RequestBody CodingTaskActiveRequest request,
                                         @AuthenticationPrincipal Long adminId) {
-        return adminCodingTaskService.setActive(moduleId, id, request.active(), adminId);
-    }
+        return activationService.setActive(moduleId, id, request.active(), adminId);   }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

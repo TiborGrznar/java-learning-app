@@ -6,9 +6,16 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.coderunner.CodeRunnerBusyException;
+import com.tgrznar.javalearningapp.coderunner.CodeRunnerUnavailableException;
+import com.tgrznar.javalearningapp.codingtask.dto.ReferenceSolutionFailedResponse;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskHasResultsException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotFoundException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotReadyException;
+import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskChangedException;
+import com.tgrznar.javalearningapp.codingtask.exception.ReferenceSolutionFailedException;
+import com.tgrznar.javalearningapp.codingtask.exception.VerificationInProgressException;
+import com.tgrznar.javalearningapp.learning.exception.SubmissionInProgressException;
 import com.tgrznar.javalearningapp.learning.exception.ModuleLockedException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizTokenException;
 import com.tgrznar.javalearningapp.learning.quiz.exception.InvalidQuizAnswersException;
@@ -95,6 +102,12 @@ import java.util.Map;
  * MODULE_REQUIRES_ACTIVE_TASK    409     an active module needs an active coding task: it cannot be activated without one, and its last active task cannot be deactivated or deleted
  * CODING_TASK_NOT_READY          409     the task cannot be activated without a reference solution and at least one test case, send the admin to the task form
  * CODING_TASK_HAS_RESULTS        409     students have submitted solutions to the task, it cannot be deleted, offer deactivation instead
+ * REFERENCE_SOLUTION_FAILED     409     the reference solution does not pass its own cases, the task stays inactive, show the diagnostics in `details` (status, failedCase, message, expectedOutput, actualOutput) to the admin
+ * VERIFICATION_IN_PROGRESS      409     another reference solution is being verified, wait and retry
+ * CODING_TASK_CHANGED           409     the task was edited while it was being verified, nothing was activated, review the task and activate again
+ * CODE_RUNNER_BUSY               503     the code runner is busy, the Retry-After header says how long to wait, offer a retry button
+ * CODE_RUNNER_UNAVAILABLE        500     the code runner failed or cannot be reached, a server fault (details only in the server log), show a generic message
+ * SUBMISSION_IN_PROGRESS         409     the student's previous submission is still being evaluated, wait for its result, do not retry in a loop
  * BAD_REQUEST                    400     a path or query value has the wrong type (e.g. text where a number is expected), a client bug
  * NOT_FOUND, METHOD_NOT_ALLOWED, ...      framework errors keep their HTTP status, code is the status name (UNSUPPORTED_MEDIA_TYPE, ...), a client bug
  * INTERNAL_ERROR                 500     unexpected server error, show a generic message, details are only in the server log
@@ -256,12 +269,63 @@ public class GlobalExceptionHandler {
                 "Úloha potrebuje referenčné riešenie a aspoň jeden testovací prípad");
     }
 
+    /** 409 REFERENCE_SOLUTION_FAILED: the reference solution failed its own cases; the body carries the diagnostics for the admin. */
+    @ExceptionHandler(ReferenceSolutionFailedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ReferenceSolutionFailedResponse handleReferenceSolutionFailed(ReferenceSolutionFailedException e) {
+        return new ReferenceSolutionFailedResponse("REFERENCE_SOLUTION_FAILED",
+                "Referenčné riešenie neprešlo všetkými testovacími prípadmi. Úloha zostáva neaktívna",
+                e.getFailure());
+    }
+
+    /** 409 VERIFICATION_IN_PROGRESS: only one reference solution is verified at a time. */
+    @ExceptionHandler(VerificationInProgressException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleVerificationInProgress() {
+        return ErrorResponse.of("VERIFICATION_IN_PROGRESS",
+                "Práve sa overuje iná úloha. Skúste to o chvíľu znova");
+    }
+
+    /** 409 CODING_TASK_CHANGED: the task was edited during the verification, so the verified result does not apply. */
+    @ExceptionHandler(CodingTaskChangedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleCodingTaskChanged() {
+        return ErrorResponse.of("CODING_TASK_CHANGED",
+                "Úloha sa počas overovania zmenila. Skontrolujte ju a aktivujte znova");
+    }
+
     /** 409 CODING_TASK_HAS_RESULTS: students submitted solutions, so the task can only be deactivated. */
     @ExceptionHandler(CodingTaskHasResultsException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleCodingTaskHasResults() {
         return ErrorResponse.of("CODING_TASK_HAS_RESULTS",
                 "Úloha má odovzdané riešenia a nemožno ju zmazať. Deaktivujte ju");
+    }
+
+    /** 503 CODE_RUNNER_BUSY: the sandbox has no free capacity right now; the submission was not evaluated. */
+    @ExceptionHandler(CodeRunnerBusyException.class)
+    public ResponseEntity<ErrorResponse> handleCodeRunnerBusy(CodeRunnerBusyException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                .body(ErrorResponse.of("CODE_RUNNER_BUSY",
+                        "Vyhodnocovanie kódu je momentálne preťažené. Skúste to o chvíľu znova"));
+    }
+
+    /** 500 CODE_RUNNER_UNAVAILABLE: the runner is down, misconfigured or sent a broken answer. */
+    @ExceptionHandler(CodeRunnerUnavailableException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ErrorResponse handleCodeRunnerUnavailable(CodeRunnerUnavailableException e) {
+        log.error("Code runner unavailable", e);
+        return ErrorResponse.of("CODE_RUNNER_UNAVAILABLE",
+                "Kód sa teraz nepodarilo vyhodnotiť. Skúste to znova neskôr");
+    }
+
+    /** 409 SUBMISSION_IN_PROGRESS: only one submission per student is evaluated at a time. */
+    @ExceptionHandler(SubmissionInProgressException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleSubmissionInProgress() {
+        return ErrorResponse.of("SUBMISSION_IN_PROGRESS",
+                "Vaše predchádzajúce riešenie sa ešte vyhodnocuje. Počkajte na výsledok");
     }
 
     /** 403 MODULE_LOCKED: the student has not passed the quiz of the previous module yet. */

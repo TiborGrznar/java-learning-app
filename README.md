@@ -19,7 +19,8 @@ Work in progress.
 | Rate limiting and request size limits | Done        |
 | Teacher: student overview and deactivation of students | Planned     |
 | Administrator: coding tasks and their test cases | Done        |
-| Student: solving coding tasks, progress overviews and archiving | Planned     |
+| Student: solving coding tasks (submission, evaluation in the sandbox) | Done        |
+| Student: progress overviews and archiving | Planned     |
 | Sandboxed execution of student code | Done           |
 | Frontend (React + TypeScript) | Not started |
 
@@ -60,7 +61,7 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | GET | `/modules/{moduleId}/coding-tasks` | `ADMIN` | Lists the tasks of a module in course order with the number of test cases, without any code |
 | GET | `/modules/{moduleId}/coding-tasks/{id}` | `ADMIN` | Detail of a task, including template, driver and reference solution |
 | PUT | `/modules/{moduleId}/coding-tasks/{id}` | `ADMIN` | Replaces the content of a task, the active flag stays |
-| PATCH | `/modules/{moduleId}/coding-tasks/{id}/active` | `ADMIN` | Activates or deactivates a task. Activation needs a reference solution and at least one test case (`409 CODING_TASK_NOT_READY`). The last active task of an active module cannot be deactivated (`409 MODULE_REQUIRES_ACTIVE_TASK`) |
+| PATCH | `/modules/{moduleId}/coding-tasks/{id}/active` | `ADMIN` | Activates or deactivates a task. Activation needs a reference solution and at least one test case (`409 CODING_TASK_NOT_READY`), and the reference solution must pass every test case in the sandbox (`409 REFERENCE_SOLUTION_FAILED` with diagnostics in `details`, the task stays inactive; the call can take up to a minute). The last active task of an active module cannot be deactivated (`409 MODULE_REQUIRES_ACTIVE_TASK`) |
 | DELETE | `/modules/{moduleId}/coding-tasks/{id}` | `ADMIN` | Deletes a task together with its test cases (`204`). A task with submitted results answers `409 CODING_TASK_HAS_RESULTS` |
 | GET | `/modules/{moduleId}/coding-tasks/{id}/cases` | `ADMIN` | Lists the test cases with their expected outputs |
 | PUT | `/modules/{moduleId}/coding-tasks/{id}/cases` | `ADMIN` | Replaces all test cases of a task (1 to 20). The case number is the position in the list |
@@ -79,8 +80,24 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | POST | `/learning/modules/{id}/theory-completed` | `STUDENT` in a class | Marks the theory as read and returns the module |
 | GET | `/learning/modules/{moduleId}/quiz` | `STUDENT` in a class | Draws a quiz of up to ten questions and a quiz token (`Cache-Control: no-store`). The theory must be read first |
 | POST | `/learning/modules/{moduleId}/quiz/submissions` | `STUDENT` in a class | Evaluates the answers of a drawn quiz. A quiz token works for one submission only. After a failed attempt the answers are marked right or wrong, the correct options are shown after a pass |
+| GET | `/learning/modules/{moduleId}/coding-tasks` | `STUDENT` in a class | Active coding tasks of the module in course order with the `solved` flag. The module must be unlocked and its theory read (the quiz is not required) |
+| GET | `/learning/modules/{moduleId}/coding-tasks/{taskId}` | `STUDENT` in a class | A task: description, template code, the visible test cases (input and expected output) and the number of hidden cases. Never the driver, the reference solution or anything about a hidden case |
+| POST | `/learning/modules/{moduleId}/coding-tasks/{taskId}/submissions` | `STUDENT` in a class | Compiles and runs the code `{"code": "..."}` (at most 12000 characters) in the sandbox and returns the verdict. See the rules of submissions below |
 
 Rules of coding tasks: a task belongs to one module and has a description, an optional template, an optional driver (`Main.java`), a reference solution and 1 to 20 test cases. Each code field and each case field is at most 16384 characters. The driver and the reference solution are written by the administrator and run only in the sandbox. A case is hidden or visible, and expected outputs, the driver and the reference solution are never part of a student response. A new task is inactive and can be activated once it has a reference solution and at least one case. A new module is inactive too, and an active module always has at least one active task: it cannot be activated without one, and the last active task of an active module can be neither deactivated nor deleted. A task that students have submitted solutions to is never deleted, only deactivated, so the history stays.
+
+Activation proves that the task can be solved: the reference solution (with the driver, if any) runs in the sandbox over all cases, hidden ones included, and its output is compared by the same rules as a student's. Only one such verification runs at a time (`409 VERIFICATION_IN_PROGRESS`), and it activates the task only if the task was not edited meanwhile (`409 CODING_TASK_CHANGED`). On failure the answer is `409 REFERENCE_SOLUTION_FAILED` and its `details` tell the administrator what went wrong: `status` (`COMPILE_ERROR`, `TIMEOUT`, `RUNTIME_ERROR` or `FAILED`), `failedCase`, `passedCases`, `totalCases`, `message` and, for a wrong output, `expectedOutput` and `actualOutput` (each at most 2000 characters). The diagnostics are for administrators only. Editing a task that is already active does not verify it again.
+
+Rules of submissions:
+
+- A student may submit when the module is unlocked and its theory is read. The task must be active and belong to the module, otherwise `404 CODING_TASK_NOT_FOUND`.
+- The code is limited to 12000 characters, which leaves room for JSON escaping inside the default 16 KiB body limit. It runs in the sandbox, never in the backend, and the program is judged on its standard output only.
+- A student has at most one submission being evaluated at a time (`409 SUBMISSION_IN_PROGRESS`), and at most 10 submissions per minute (`429 RATE_LIMITED`). If the sandbox is busy, the answer is `503 CODE_RUNNER_BUSY` with `Retry-After`, and `500 CODE_RUNNER_UNAVAILABLE` when it cannot be reached. Neither stores a result.
+- The answer holds `status` (`PASSED`, `COMPILE_ERROR`, `RUNTIME_ERROR`, `TIMEOUT` or `FAILED`), `passed`, `passedCases`, `totalCases`, `errorMessage`, `actualOutput`, the outcome of every case in `cases` and `moduleCodingCompleted`. Overall status: `PASSED` when every case passes, `COMPILE_ERROR` when the code does not compile (`TIMEOUT` when the compilation itself takes too long), otherwise the status of the first failing case. Running out of memory counts as a runtime error.
+- A visible case that fails shows the message of the runner (for an exception the type, the text and the line, e.g. `ArrayIndexOutOfBoundsException: Index 5 out of bounds for length 3`) and, for a wrong answer, what the program printed. A hidden case shows only its number and verdict; after an exception it adds the type and the line in the student's own file (`Výnimka NullPointerException (Solution.java, riadok 4)`) when the type is a well-known JDK exception, and never the text of the exception, because that could carry the hidden input.
+- Every submission with a verdict is stored as a result (the history stays). The coding part of a module is completed when the student has a passed result for every currently active task of the module, and it stays completed afterwards.
+
+Comparison of the output (for task authors): line endings `\r\n` and `\n` are the same, spaces at the end of a line (not tabs) and blank lines at the end are ignored, everything else must match exactly: letter case, spaces inside and at the start of a line, blank lines in the middle, and numbers character by character (`3.0` is not `3`).
 
 Rules of user management: an administrator cannot change their own role or deactivate themselves, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them. There is no password change yet, so the temporary password of a new teacher stays valid until that is implemented.
 
@@ -137,15 +154,21 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 409 | `TEACHER_LEADS_CLASSES` | The teacher leads an active class, reassign or deactivate the class first |
 | 409 | `ALREADY_ENROLLED` | The student already belongs to a class |
 | 409 | `SCHOOL_MISMATCH` | The school of the student differs from the school of the class |
-| 409 | `THEORY_NOT_COMPLETED` | The theory of the module has not been marked as read yet |
+| 409 | `THEORY_NOT_COMPLETED` | The theory of the module has not been marked as read yet (needed for the quiz and for coding tasks) |
 | 409 | `QUIZ_NOT_AVAILABLE` | The module has no quiz questions |
 | 409 | `QUIZ_OUTDATED` | The quiz expired or one of its questions was deleted, load it again |
 | 409 | `QUIZ_ALREADY_SUBMITTED` | The quiz token was already used for a submission (double click, retry), load the quiz again |
 | 409 | `MODULE_REQUIRES_ACTIVE_TASK` | An active module needs an active coding task: it cannot be activated without one, and its last active task cannot be deactivated or deleted |
 | 409 | `CODING_TASK_NOT_READY` | The task cannot be activated without a reference solution and at least one test case |
 | 409 | `CODING_TASK_HAS_RESULTS` | Students have submitted solutions to the task, it cannot be deleted, deactivate it instead |
+| 409 | `SUBMISSION_IN_PROGRESS` | The student's previous submission is still being evaluated, wait for its result |
+| 409 | `REFERENCE_SOLUTION_FAILED` | The reference solution does not pass its own test cases, the task stays inactive. The body carries `details` (see the rules of coding tasks) |
+| 409 | `VERIFICATION_IN_PROGRESS` | Another reference solution is being verified, retry in a moment |
+| 409 | `CODING_TASK_CHANGED` | The task was edited while its reference solution was verified, nothing was activated, review the task and activate it again |
 | 429 | `TOO_MANY_ATTEMPTS` | Too many failed enrollment attempts, the `Retry-After` header says how many seconds to wait |
 | 429 | `RATE_LIMITED` | Too many requests from this address, for this e-mail or from this student, the `Retry-After` header says how many seconds to wait |
+| 500 | `CODE_RUNNER_UNAVAILABLE` | The code runner is down, misconfigured or sent a broken answer, a server fault (the details are only in the server log) |
+| 503 | `CODE_RUNNER_BUSY` | The code runner has no free capacity, the `Retry-After` header says how many seconds to wait |
 
 ## Rate limiting and request size limits
 
@@ -159,18 +182,19 @@ Limits are kept in memory (`ratelimit/RateLimiter`, a sliding window), so they r
 | any other request under `/api/v1/` | client IP | 600 per minute |
 | failed logins | hash of the e-mail, any IP | 5 per 15 minutes |
 | quiz load | student id | 20 per minute |
+| coding submission | student id | 10 per minute |
 
 All values are configurable under `app.rate-limit.*`. A limit answers `429 RATE_LIMITED` with a `Retry-After` header. The number of tracked keys is bounded, so forged addresses cannot exhaust memory.
 
 **Client IP.** By default the address of the TCP connection is used. `X-Forwarded-For` is believed only when the connection comes from a proxy listed in `RATE_LIMIT_TRUSTED_PROXIES` (exact addresses, comma separated). The rightmost entry that is not a trusted proxy is the client. Set it before deploying behind a reverse proxy, otherwise all users share the proxy's address.
 
-**Body size.** Request bodies under `/api/` are limited to 16 KiB, and to 1 MiB under the prefixes in `app.rate-limit.large-body-prefixes` (module theory, coding tasks and test cases). Larger bodies get `413 PAYLOAD_TOO_LARGE`, including bodies sent without a `Content-Length`.
+**Body size.** Request bodies under `/api/` are limited to 16 KiB, and to 1 MiB under the prefixes in `app.rate-limit.large-body-prefixes` (module theory, coding tasks and test cases). Larger bodies get `413 PAYLOAD_TOO_LARGE`, including bodies sent without a `Content-Length`. A student's code goes under `/api/v1/learning`, which has the default limit, so it is capped at 12000 characters.
 
 Known trade-offs: anyone who knows an e-mail can block logins to it for the length of the window (only failures count and a successful login clears the counter, so the block is short). A school behind one public address shares the registration and general limits, raise them in the configuration if needed.
 
 ## Code runner (sandbox)
 
-Student code is untrusted, so it never runs inside the backend. The `runner/` module is a separate Spring Boot service, the only part that talks to Docker. Every submission runs in its own disposable container, which is removed afterwards. The backend will call the runner over HTTP (the integration comes with the coding tasks); the runner only reports what the program printed, comparing it with the expected output is the backend's job.
+Student code is untrusted, so it never runs inside the backend. The `runner/` module is a separate Spring Boot service, the only part that talks to Docker. Every submission runs in its own disposable container, which is removed afterwards. The backend calls the runner over HTTP (`coderunner/HttpCodeRunner`); the runner only reports what the program printed and never sees an expected output, comparing is the backend's job (`learning/coding/AttemptEvaluator`). The runner must be running for submissions and for activating a coding task.
 
 ### Build the image and start the runner
 
@@ -180,14 +204,30 @@ The runner never pulls images, so build the sandbox image first (and again after
 docker build --tag jla-sandbox:spike runner/sandbox
 ```
 
-Set `RUNNER_TOKEN` (see the table above), load `.env` as in step 3 and start the runner:
+Set `RUNNER_TOKEN` in `.env` (see the table above; the backend and the runner must use the same value), load `.env` as in step 3 and start the runner. The environment variables are per window, so load `.env` in the window where you start it:
 
 ```
 cd runner
 .\mvnw.cmd spring-boot:run
 ```
 
-It listens on `127.0.0.1:8081` only.
+It listens on `127.0.0.1:8081` only. The log line `Started RunnerApplication` means it is ready. If it stops with `must be at least 32 characters long` and the value `${RUNNER_TOKEN}`, the variable is not set: `.env` has no `RUNNER_TOKEN` line (an `.env` created before the runner was added does not have it) or it was not loaded in this window.
+
+To check it from a second window (load `.env` there too):
+
+```
+Invoke-RestMethod http://127.0.0.1:8081/health
+$body = @{ solutionSource = 'public class Solution { public static void main(String[] a) { System.out.println(1 + 2); } }'; caseInputs = @('') } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8081/run -Headers @{ 'X-Runner-Token' = $env:RUNNER_TOKEN } -ContentType 'application/json; charset=utf-8' -Body $body | ConvertTo-Json -Depth 10
+```
+
+Never paste the token into a chat, a ticket or a command that is kept in a history.
+
+### Backend integration
+
+The backend reads `app.runner.*` (`application.yaml`): `base-url` (environment variable `RUNNER_BASE_URL`, default `http://127.0.0.1:8081`), `token` (`RUNNER_TOKEN`, **required, no default**: the backend does not start with a token shorter than 32 characters), `connect-timeout` (2 s) and a read timeout of 25 s plus 5 s per case, a safety net above the runner's own limits. The tests do not need a runner or the token, they use a scripted fake runner and a test-only token.
+
+The backend checks every answer (one result per input, numbered from 1, none after a compilation error) and translates failures: a busy runner (`503 SANDBOX_BUSY`) becomes `503 CODE_RUNNER_BUSY` with the same `Retry-After`, everything else that goes wrong (connection, timeout, `4xx` and `5xx` of the runner, a broken answer) becomes `500 CODE_RUNNER_UNAVAILABLE` without any detail for the client. No database transaction stays open while the runner works.
 
 ### API
 
@@ -263,7 +303,7 @@ Docker Desktop is enough for development. In production run Docker rootless or u
 - **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, Lombok, Maven
 - **Database:** MySQL 8.4 LTS (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
-- - **Code runner:** a separate Spring Boot service (`runner/`) that runs student code in disposable Docker containers
+- **Code runner:** a separate Spring Boot service (`runner/`) that runs student code in disposable Docker containers
 
 Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
 
@@ -300,7 +340,8 @@ Fill in the values in `.env` (it is git-ignored and must never be committed):
 | `ADMIN_NAME` | Optional, first name of the first administrator (default `Admin`) |
 | `ADMIN_SURNAME` | Optional, surname of the first administrator (default `Administrátor`) |
 | `RATE_LIMIT_TRUSTED_PROXIES` | Optional, comma separated addresses of reverse proxies whose `X-Forwarded-For` header is believed (default empty: never) |
-| `RUNNER_TOKEN` | Shared secret between the backend and the code runner, at least 32 characters. Required to start the runner, there is no default |
+| `RUNNER_TOKEN` | Shared secret between the backend and the code runner, at least 32 characters. Both the backend and the runner refuse to start without it, there is no default. If your `.env` was created before the runner was added, add the line (compare it with `.env.example`) |
+| `RUNNER_BASE_URL` | Optional, where the backend finds the runner (default `http://127.0.0.1:8081`). Leave the line out or commented out, an empty value breaks the startup |
 | `RUNNER_PORT` | Optional, port of the runner (default `8081`) |
 | `RUNNER_BIND_ADDRESS` | Optional, address the runner listens on (default `127.0.0.1`, keep it that way) |
 
@@ -311,6 +352,12 @@ $b = New-Object byte[] 32; (New-Object Security.Cryptography.RNGCryptoServicePro
 ```
 
 Linux/macOS: `openssl rand -base64 32`
+
+Generate a `RUNNER_TOKEN` the same way (any random string of at least 32 characters will do). In PowerShell you can append it to `.env` without ever printing it:
+
+```
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); Add-Content -Path .env -Value "`nRUNNER_TOKEN=$([Convert]::ToBase64String($b))"
+```
 
 ### 2. Start the database
 
@@ -379,7 +426,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   │   ├── security/     JWT service, filter, security config, 401/403 JSON handlers
 │       │   │   │   └── token/        refresh token entity, repository and service
 │       │   │   ├── codingtask/   coding tasks and test cases (admin/ holds their management)
-│       │   │   └── quizresult/ codingresult/ userprogress/
+│       │   │   ├── coderunner/   client of the code runner service (HTTP, answer checks)
 │       │   │   ├── common/       global exception handler, error body, page response, MVC configuration
 │       │   │   ├── ratelimit/    sliding-window limiter, per-IP filter, body size filter, client IP resolution
 │       │   │   ├── user/
@@ -400,8 +447,9 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   ├── module/       course modules (admin/ holds their management)
 │       │   │   ├── quizquestion/ quiz questions (admin/ holds their management)
 │       │   │   ├── learning/     the student's view: modules, theory, progress
-│       │   │   │   └── quiz/         quiz draw and evaluation
-│       │   │   └── codingtask/ quizresult/ codingresult/ userprogress/
+│       │   │   │   ├── quiz/         quiz draw and evaluation
+│       │   │   │   └── coding/       coding tasks of a student: submissions, evaluation, comparison of outputs
+│       │   │   └── quizresult/ codingresult/ userprogress/   results and progress of students (entities and repositories)
 │       │   └── resources/
 │       │       ├── application.yaml
 │       │       └── db/migration/ Flyway migrations (V1 to V7)

@@ -10,6 +10,7 @@ import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskCasesRequest;
 import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskRequest;
 import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskResponse;
 import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskSummary;
+import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskChangedException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskHasResultsException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotFoundException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotReadyException;
@@ -208,84 +209,202 @@ class AdminCodingTaskServiceTest {
         verify(taskRepository, never()).saveAndFlush(any());
     }
 
-    // ---------- setActive ----------
+    // ---------- deactivate ----------
 
     @Test
-    void setActive_activateWithoutCases_throwsNotReady() {
-        givenModuleAndTask(true, task(TASK_ID, false));
-        when(caseRepository.countByCodingTaskId(TASK_ID)).thenReturn(0L);
-
-        assertThatThrownBy(() -> service.setActive(MODULE_ID, TASK_ID, true, ADMIN_ID))
-                .isInstanceOf(CodingTaskNotReadyException.class);
-
-        verify(taskRepository, never()).saveAndFlush(any());
-    }
-
-    @Test
-    void setActive_activateWithoutReferenceSolution_throwsNotReady() {
-        CodingTask task = task(TASK_ID, false);
-        task.setReferenceSolution("   ");
-        givenModuleAndTask(true, task);
-        when(caseRepository.countByCodingTaskId(TASK_ID)).thenReturn(2L);
-
-        assertThatThrownBy(() -> service.setActive(MODULE_ID, TASK_ID, true, ADMIN_ID))
-                .isInstanceOf(CodingTaskNotReadyException.class);
-
-        verify(taskRepository, never()).saveAndFlush(any());
-    }
-
-    @Test
-    void setActive_activateReadyTask_activates() {
-        givenModuleAndTask(true, task(TASK_ID, false));
-        when(caseRepository.countByCodingTaskId(TASK_ID)).thenReturn(2L);
-        when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        CodingTaskResponse response = service.setActive(MODULE_ID, TASK_ID, true, ADMIN_ID);
-
-        assertThat(response.active()).isTrue();
-    }
-
-    @Test
-    void setActive_sameState_isNoOp() {
-        givenModuleAndTask(true, task(TASK_ID, true));
-
-        CodingTaskResponse response = service.setActive(MODULE_ID, TASK_ID, true, ADMIN_ID);
-
-        assertThat(response.active()).isTrue();
-        verify(taskRepository, never()).saveAndFlush(any());
-    }
-
-    @Test
-    void setActive_deactivateLastActiveTaskOfActiveModule_throws() {
+    void deactivate_lastActiveTaskOfActiveModule_throws() {
         givenModuleAndTask(true, task(TASK_ID, true));
         when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(1L);
 
-        assertThatThrownBy(() -> service.setActive(MODULE_ID, TASK_ID, false, ADMIN_ID))
+        assertThatThrownBy(() -> service.deactivate(MODULE_ID, TASK_ID, ADMIN_ID))
                 .isInstanceOf(ModuleRequiresActiveTaskException.class);
 
         verify(taskRepository, never()).saveAndFlush(any());
     }
 
     @Test
-    void setActive_deactivateOneOfSeveralActiveTasks_deactivates() {
+    void deactivate_oneOfSeveralActiveTasks_deactivates() {
         givenModuleAndTask(true, task(TASK_ID, true));
         when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(2L);
         when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CodingTaskResponse response = service.setActive(MODULE_ID, TASK_ID, false, ADMIN_ID);
+        CodingTaskResponse response = service.deactivate(MODULE_ID, TASK_ID, ADMIN_ID);
 
         assertThat(response.active()).isFalse();
     }
 
     @Test
-    void setActive_deactivateLastActiveTaskOfInactiveModule_deactivatesWithoutCounting() {
+    void deactivate_lastActiveTaskOfInactiveModule_deactivatesWithoutCounting() {
         givenModuleAndTask(false, task(TASK_ID, true));
         when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CodingTaskResponse response = service.setActive(MODULE_ID, TASK_ID, false, ADMIN_ID);
+        CodingTaskResponse response = service.deactivate(MODULE_ID, TASK_ID, ADMIN_ID);
 
         assertThat(response.active()).isFalse();
         verify(taskRepository, never()).countByModuleIdAndActiveTrue(any());
+    }
+
+    @Test
+    void deactivate_alreadyInactive_isNoOp() {
+        givenModuleAndTask(true, task(TASK_ID, false));
+
+        CodingTaskResponse response = service.deactivate(MODULE_ID, TASK_ID, ADMIN_ID);
+
+        assertThat(response.active()).isFalse();
+        verify(taskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void deactivate_unknownTask_throwsNotFound() {
+        givenModule(true);
+        when(taskRepository.findByIdAndModuleId(TASK_ID, MODULE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivate(MODULE_ID, TASK_ID, ADMIN_ID))
+                .isInstanceOf(CodingTaskNotFoundException.class);
+    }
+
+    // ---------- prepareActivation ----------
+
+    @Test
+    void prepareActivation_withoutCases_throwsNotReady() {
+        givenModuleAndTask(true, task(TASK_ID, false));
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.prepareActivation(MODULE_ID, TASK_ID))
+                .isInstanceOf(CodingTaskNotReadyException.class);
+    }
+
+    @Test
+    void prepareActivation_withoutReferenceSolution_throwsNotReady() {
+        CodingTask task = task(TASK_ID, false);
+        task.setReferenceSolution("   ");
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1", "1", false)));
+
+        assertThatThrownBy(() -> service.prepareActivation(MODULE_ID, TASK_ID))
+                .isInstanceOf(CodingTaskNotReadyException.class);
+    }
+
+    @Test
+    void prepareActivation_readyTask_returnsTheSnapshotOfTheStoredCodeAndCasesInOrder() {
+        CodingTask task = task(TASK_ID, false);
+        task.setDriverCode("class Main {}");
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3", false), testCase(2, "5 5", "10", true)));
+
+        Optional<ActivationSnapshot> snapshot = service.prepareActivation(MODULE_ID, TASK_ID);
+
+        assertThat(snapshot).contains(new ActivationSnapshot(MODULE_ID, TASK_ID, "class Solution {}", "class Main {}",
+                List.of(new ActivationSnapshot.Case(1, "1 2", "3"), new ActivationSnapshot.Case(2, "5 5", "10"))));
+        verify(taskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void prepareActivation_alreadyActive_returnsEmptyAndLoadsNoCases() {
+        givenModuleAndTask(true, task(TASK_ID, true));
+
+        assertThat(service.prepareActivation(MODULE_ID, TASK_ID)).isEmpty();
+
+        verifyNoInteractions(caseRepository);
+    }
+
+    @Test
+    void prepareActivation_unknownTask_throwsNotFound() {
+        givenModule(true);
+        when(taskRepository.findByIdAndModuleId(TASK_ID, MODULE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.prepareActivation(MODULE_ID, TASK_ID))
+                .isInstanceOf(CodingTaskNotFoundException.class);
+    }
+
+    // ---------- completeActivation ----------
+
+    @Test
+    void completeActivation_taskUnchangedSinceTheVerification_activates() {
+        givenModuleAndTask(true, task(TASK_ID, false));
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3", false)));
+        when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CodingTaskResponse response = service.completeActivation(MODULE_ID, TASK_ID, verified("3"), ADMIN_ID);
+
+        assertThat(response.active()).isTrue();
+        assertThat(response.caseCount()).isEqualTo(1);
+        verify(taskRepository).saveAndFlush(any(CodingTask.class));
+    }
+
+    @Test
+    void completeActivation_expectedOutputChangedDuringTheVerification_throwsAndActivatesNothing() {
+        CodingTask task = task(TASK_ID, false);
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "4", false)));
+
+        assertThatThrownBy(() -> service.completeActivation(MODULE_ID, TASK_ID, verified("3"), ADMIN_ID))
+                .isInstanceOf(CodingTaskChangedException.class);
+
+        assertThat(task.isActive()).isFalse();
+        verify(taskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void completeActivation_casesReplacedDuringTheVerification_throwsAndActivatesNothing() {
+        givenModuleAndTask(true, task(TASK_ID, false));
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3", false), testCase(2, "9 9", "18", false)));
+
+        assertThatThrownBy(() -> service.completeActivation(MODULE_ID, TASK_ID, verified("3"), ADMIN_ID))
+                .isInstanceOf(CodingTaskChangedException.class);
+
+        verify(taskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void completeActivation_referenceSolutionChangedDuringTheVerification_throwsAndActivatesNothing() {
+        CodingTask task = task(TASK_ID, false);
+        task.setReferenceSolution("class Solution { /* edited */ }");
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3", false)));
+
+        assertThatThrownBy(() -> service.completeActivation(MODULE_ID, TASK_ID, verified("3"), ADMIN_ID))
+                .isInstanceOf(CodingTaskChangedException.class);
+
+        verify(taskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void completeActivation_driverChangedDuringTheVerification_throwsAndActivatesNothing() {
+        CodingTask task = task(TASK_ID, false);
+        task.setDriverCode("class Main { /* edited */ }");
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3", false)));
+
+        assertThatThrownBy(() -> service.completeActivation(MODULE_ID, TASK_ID, verified("3"), ADMIN_ID))
+                .isInstanceOf(CodingTaskChangedException.class);
+
+        verify(taskRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void completeActivation_activatedMeanwhileByAnotherAdmin_returnsItUnchanged() {
+        givenModuleAndTask(true, task(TASK_ID, true));
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3", false)));
+
+        CodingTaskResponse response = service.completeActivation(MODULE_ID, TASK_ID, verified("3"), ADMIN_ID);
+
+        assertThat(response.active()).isTrue();
+        verify(taskRepository, never()).saveAndFlush(any());
+    }
+
+    /** What the verification saw: the default task() and one case. */
+    private static ActivationSnapshot verified(String expectedOutput) {
+        return new ActivationSnapshot(MODULE_ID, TASK_ID, "class Solution {}", null,
+                List.of(new ActivationSnapshot.Case(1, "1 2", expectedOutput)));
     }
 
     // ---------- delete ----------

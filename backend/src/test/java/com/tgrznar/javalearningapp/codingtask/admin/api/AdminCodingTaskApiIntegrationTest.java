@@ -1,6 +1,8 @@
 package com.tgrznar.javalearningapp.codingtask.admin.api;
 
 import com.tgrznar.javalearningapp.auth.security.JwtService;
+import com.tgrznar.javalearningapp.coderunner.CodeRunnerBusyException;
+import com.tgrznar.javalearningapp.coderunner.CodeRunnerUnavailableException;
 import com.tgrznar.javalearningapp.codingresult.CodingResult;
 import com.tgrznar.javalearningapp.codingresult.CodingResultStatus;
 import com.tgrznar.javalearningapp.codingtask.CodingTask;
@@ -9,11 +11,14 @@ import com.tgrznar.javalearningapp.codingtask.CodingTaskCaseRepository;
 import com.tgrznar.javalearningapp.codingtask.CodingTaskRepository;
 import com.tgrznar.javalearningapp.module.CourseModule;
 import com.tgrznar.javalearningapp.module.CourseModuleRepository;
+import com.tgrznar.javalearningapp.testsupport.FakeCodeRunner;
+import com.tgrznar.javalearningapp.testsupport.FakeCodeRunnerConfig;
 import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -47,7 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * back after each test; every test works in its own module, so lists contain only its own tasks.
  */
 @SpringBootTest
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, FakeCodeRunnerConfig.class})
 @AutoConfigureMockMvc
 @Transactional
 class AdminCodingTaskApiIntegrationTest {
@@ -74,6 +79,14 @@ class AdminCodingTaskApiIntegrationTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private FakeCodeRunner fakeCodeRunner;
+
+    @BeforeEach
+    void resetRunner() {
+        fakeCodeRunner.reset();
+    }
 
     // ---------- access control: wrong role = 403, no token = 401 ----------
 
@@ -153,6 +166,7 @@ class AdminCodingTaskApiIntegrationTest {
                 .andExpect(status().isForbidden());
 
         assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+        assertThat(fakeCodeRunner.calls()).isEmpty();
     }
 
     @ParameterizedTest
@@ -449,6 +463,7 @@ class AdminCodingTaskApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("CODING_TASK_NOT_READY"));
 
         assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+        assertThat(fakeCodeRunner.calls()).isEmpty();
     }
 
     @Test
@@ -464,13 +479,15 @@ class AdminCodingTaskApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("CODING_TASK_NOT_READY"));
 
         assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+        assertThat(fakeCodeRunner.calls()).isEmpty();
     }
 
     @Test
-    void setActive_readyTask_activates() throws Exception {
+    void setActive_readyTask_verifiesTheReferenceSolutionInTheRunnerAndActivates() throws Exception {
         CourseModule module = saveModule(false);
         CodingTask task = saveTask(module, "Task", 1, false);
         saveCase(task, 1, "1", "1", false);
+        fakeCodeRunner.respondWith(FakeCodeRunner.okWith("1\n"));
 
         as(patchActive(module, task, true), UserRole.ADMIN)
                 .andExpect(status().isOk())
@@ -478,6 +495,122 @@ class AdminCodingTaskApiIntegrationTest {
                 .andExpect(jsonPath("$.caseCount").value(1));
 
         assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isTrue();
+        assertThat(fakeCodeRunner.calls()).hasSize(1);
+        FakeCodeRunner.Call call = fakeCodeRunner.calls().get(0);
+        assertThat(call.solutionSource()).isEqualTo("class Solution { }");
+        assertThat(call.driverSource()).isNull();
+        assertThat(call.caseInputs()).containsExactly("1");
+    }
+
+    @Test
+    void setActive_taskWithDriver_sendsTheDriverToTheRunner() throws Exception {
+        CourseModule module = saveModule(false);
+        CodingTask task = saveTask(module, "Task", 1, false);
+        task.setDriverCode("class Main { }");
+        taskRepository.saveAndFlush(task);
+        saveCase(task, 1, "1", "1", false);
+        fakeCodeRunner.respondWith(FakeCodeRunner.okWith("1\n"));
+
+        as(patchActive(module, task, true), UserRole.ADMIN).andExpect(status().isOk());
+
+        assertThat(fakeCodeRunner.calls().get(0).driverSource()).isEqualTo("class Main { }");
+    }
+
+    @Test
+    void setActive_referenceSolutionPrintsAWrongOutput_returns409WithDiagnosticsAndStaysInactive() throws Exception {
+        CourseModule module = saveModule(false);
+        CodingTask task = saveTask(module, "Task", 1, false);
+        saveCase(task, 1, "1", "1", false);
+        saveCase(task, 2, "2", "4", true);
+        fakeCodeRunner.respondWith(FakeCodeRunner.okWith("1\n", "3\n"));
+
+        as(patchActive(module, task, true), UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REFERENCE_SOLUTION_FAILED"))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.details.status").value("FAILED"))
+                .andExpect(jsonPath("$.details.failedCase").value(2))
+                .andExpect(jsonPath("$.details.passedCases").value(1))
+                .andExpect(jsonPath("$.details.totalCases").value(2))
+                .andExpect(jsonPath("$.details.expectedOutput").value("4"))
+                .andExpect(jsonPath("$.details.actualOutput").value("3\n"))
+                .andExpect(jsonPath("$.details.message").doesNotExist());
+
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void setActive_referenceSolutionDoesNotCompile_returns409WithTheCompilerMessage() throws Exception {
+        CourseModule module = saveModule(false);
+        CodingTask task = saveTask(module, "Task", 1, false);
+        saveCase(task, 1, "1", "1", false);
+        fakeCodeRunner.respondWith(FakeCodeRunner.compileError("Solution.java:1: error: boom"));
+
+        as(patchActive(module, task, true), UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REFERENCE_SOLUTION_FAILED"))
+                .andExpect(jsonPath("$.details.status").value("COMPILE_ERROR"))
+                .andExpect(jsonPath("$.details.failedCase").doesNotExist())
+                .andExpect(jsonPath("$.details.message").value(containsString("boom")));
+
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void setActive_referenceSolutionCrashesInAHiddenCase_theAdminSeesTheFullMessage() throws Exception {
+        CourseModule module = saveModule(false);
+        CodingTask task = saveTask(module, "Task", 1, false);
+        saveCase(task, 1, "1", "1", true);
+        fakeCodeRunner.respondWith(FakeCodeRunner.compiled(List.of(FakeCodeRunner.crashed(1,
+                "Exception in thread \"main\" java.lang.IllegalStateException: detail\n\tat Solution.main(Solution.java:1)"))));
+
+        as(patchActive(module, task, true), UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.details.status").value("RUNTIME_ERROR"))
+                .andExpect(jsonPath("$.details.failedCase").value(1))
+                .andExpect(jsonPath("$.details.message").value(containsString("detail")));
+    }
+
+    @Test
+    void setActive_busyRunner_returns503WithRetryAfterAndStaysInactive() throws Exception {
+        CourseModule module = saveModule(false);
+        CodingTask task = saveTask(module, "Task", 1, false);
+        saveCase(task, 1, "1", "1", false);
+        fakeCodeRunner.failWith(new CodeRunnerBusyException(7));
+
+        as(patchActive(module, task, true), UserRole.ADMIN)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string("Retry-After", "7"))
+                .andExpect(jsonPath("$.code").value("CODE_RUNNER_BUSY"));
+
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void setActive_unavailableRunner_returns500AndStaysInactive() throws Exception {
+        CourseModule module = saveModule(false);
+        CodingTask task = saveTask(module, "Task", 1, false);
+        saveCase(task, 1, "1", "1", false);
+        fakeCodeRunner.failWith(new CodeRunnerUnavailableException("The code runner answered HTTP 500"));
+
+        as(patchActive(module, task, true), UserRole.ADMIN)
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("CODE_RUNNER_UNAVAILABLE"));
+
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void setActive_alreadyActiveTask_returnsItWithoutRunningAnything() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Task", 1, true);
+        saveCase(task, 1, "1", "1", false);
+
+        as(patchActive(module, task, true), UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(true));
+
+        assertThat(fakeCodeRunner.calls()).isEmpty();
     }
 
     @Test
