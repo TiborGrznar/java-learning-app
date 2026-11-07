@@ -10,6 +10,7 @@ import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskCasesRequest;
 import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskRequest;
 import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskResponse;
 import com.tgrznar.javalearningapp.codingtask.dto.CodingTaskSummary;
+import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskChangedException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskHasResultsException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotFoundException;
 import com.tgrznar.javalearningapp.codingtask.exception.CodingTaskNotReadyException;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Administrator-side management of coding tasks and their test cases. Every operation is scoped
@@ -31,7 +33,9 @@ import java.util.List;
  * <p>
  * Rules enforced here:
  * <ul>
- *   <li>a new task is inactive; activating it needs a reference solution and at least one case,</li>
+ *   <li>a new task is inactive; activating it needs a reference solution and at least one case, and the
+ *       reference solution must pass every case in the sandbox (see {@link AdminCodingTaskActivationService},
+ *       this class only prepares and completes an activation, it never runs code),</li>
  *   <li>an active module keeps at least one active task, so the last active task of an active
  *       module can be neither deactivated nor deleted,</li>
  *   <li>a task with submitted results is never deleted (the results stay as history), only deactivated.</li>
@@ -91,26 +95,61 @@ public class AdminCodingTaskService {
         return CodingTaskResponse.from(saved, moduleId, caseRepository.countByCodingTaskId(id));
     }
 
+    /** Deactivates a task; an already inactive task is returned as it is. Activation: see {@link AdminCodingTaskActivationService}. */
     @Transactional
-    public CodingTaskResponse setActive(Long moduleId, Long id, boolean active, Long adminId) {
+    public CodingTaskResponse deactivate(Long moduleId, Long id, Long adminId) {
         CourseModule module = requireModule(moduleId);
         CodingTask task = findTask(moduleId, id);
         long caseCount = caseRepository.countByCodingTaskId(id);
-        if (task.isActive() == active) {
+        if (!task.isActive()) {
             return CodingTaskResponse.from(task, moduleId, caseCount);
         }
 
-        if (active) {
-            requireReady(task, caseCount);
-        } else {
-            requireNotLastActiveTask(module, task);
+        requireNotLastActiveTask(module, task);
+
+        task.setActive(false);
+        CodingTask saved = taskRepository.saveAndFlush(task);
+        log.info("Coding task deactivated: id={}, moduleId={}, changedByAdminId={}", id, moduleId, adminId);
+        return CodingTaskResponse.from(saved, moduleId, caseCount);
+    }
+
+    /**
+     * First step of an activation: checks that the task is ready (a reference solution and at least one case)
+     * and takes the snapshot that will be verified in the sandbox. Empty when the task is already active.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ActivationSnapshot> prepareActivation(Long moduleId, Long id) {
+        requireModule(moduleId);
+        CodingTask task = findTask(moduleId, id);
+        if (task.isActive()) {
+            return Optional.empty();
+        }
+        List<CodingTaskCase> cases = caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(id);
+        requireReady(task, cases.size());
+        return Optional.of(snapshotOf(moduleId, task, cases));
+    }
+
+    /**
+     * Last step of an activation, after the snapshot passed the verification. The task is activated only if it
+     * still equals the verified snapshot; if an administrator changed its code or cases meanwhile, nothing is
+     * activated. A task that somebody else activated in the meantime is returned as it is.
+     */
+    @Transactional
+    public CodingTaskResponse completeActivation(Long moduleId, Long id, ActivationSnapshot verified, Long adminId) {
+        requireModule(moduleId);
+        CodingTask task = findTask(moduleId, id);
+        List<CodingTaskCase> cases = caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(id);
+        if (task.isActive()) {
+            return CodingTaskResponse.from(task, moduleId, cases.size());
+        }
+        if (!snapshotOf(moduleId, task, cases).equals(verified)) {
+            throw new CodingTaskChangedException(id);
         }
 
-        task.setActive(active);
+        task.setActive(true);
         CodingTask saved = taskRepository.saveAndFlush(task);
-        log.info("Coding task active flag changed: id={}, moduleId={}, active={}, changedByAdminId={}",
-                id, moduleId, active, adminId);
-        return CodingTaskResponse.from(saved, moduleId, caseCount);
+        log.info("Coding task activated: id={}, moduleId={}, changedByAdminId={}", id, moduleId, adminId);
+        return CodingTaskResponse.from(saved, moduleId, cases.size());
     }
 
     /**
@@ -194,6 +233,14 @@ public class AdminCodingTaskService {
         if (caseCount == 0 || task.getReferenceSolution() == null || task.getReferenceSolution().isBlank()) {
             throw new CodingTaskNotReadyException(task.getId());
         }
+    }
+
+    private static ActivationSnapshot snapshotOf(Long moduleId, CodingTask task, List<CodingTaskCase> cases) {
+        List<ActivationSnapshot.Case> snapshotCases = cases.stream()
+                .map(testCase -> new ActivationSnapshot.Case(
+                        testCase.getOrderNumber(), testCase.getInputText(), testCase.getExpectedOutput()))
+                .toList();
+        return new ActivationSnapshot(moduleId, task.getId(), task.getReferenceSolution(), task.getDriverCode(), snapshotCases);
     }
 
     /** An active module must keep an active task; for an inactive module nothing is lost. */
