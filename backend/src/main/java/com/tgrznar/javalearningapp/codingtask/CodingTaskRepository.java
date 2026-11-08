@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +23,9 @@ public interface CodingTaskRepository extends JpaRepository<CodingTask, Long> {
 
     /** The active tasks of a module in the order students see them. */
     List<CodingTask> findByModuleIdAndActiveTrueOrderByOrderNumberAscIdAsc(Long moduleId);
+
+    /** The active tasks of several modules in one query, e.g. for the progress overview. */
+    List<CodingTask> findByModuleIdInAndActiveTrueOrderByOrderNumberAscIdAsc(Collection<Long> moduleIds);
 
     /** A student reaches only active tasks, and only through the module they belong to. */
     Optional<CodingTask> findByIdAndModuleIdAndActiveTrue(Long id, Long moduleId);
