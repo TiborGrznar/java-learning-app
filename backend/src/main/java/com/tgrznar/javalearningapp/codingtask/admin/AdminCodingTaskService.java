@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -33,12 +34,10 @@ import java.util.Optional;
  * <p>
  * Rules enforced here:
  * <ul>
- *   <li>a new task is inactive; activating it needs a reference solution and at least one case, and the
- *       reference solution must pass every case in the sandbox (see {@link AdminCodingTaskActivationService},
- *       this class only prepares and completes an activation, it never runs code),</li>
- *   <li>an active module keeps at least one active task, so the last active task of an active
- *       module can be neither deactivated nor deleted,</li>
- *   <li>a task with submitted results is never deleted (the results stay as history), only deactivated.</li>
+ *   <li>a task with submitted results is never deleted (the results stay as history), only deactivated,</li>
+ *   <li>editing what the activation verified (the driver, the reference solution or the cases) of an active task
+ *       deactivates it, so it has to pass the verification again before students see it; the same rule about the
+ *       last active task of an active module applies, such an edit is refused.</li>
  * </ul>
  * The driver and the reference solution are admin-written code. They are stored here and run only
  * inside the sandbox (never in this JVM), and they never reach a student DTO.
@@ -83,15 +82,31 @@ public class AdminCodingTaskService {
         return CodingTaskResponse.from(task, moduleId, caseRepository.countByCodingTaskId(id));
     }
 
-    /** Replaces all content fields; the active flag is left alone. */
+    /**
+     * Replaces all content fields. An active task stays active unless the driver or the reference solution
+     * changes: those are what the activation verified, so the task is deactivated and has to be activated
+     * (and verified) again. The answer shows the resulting active flag.
+     */
     @Transactional
     public CodingTaskResponse update(Long moduleId, Long id, CodingTaskRequest request, Long adminId) {
-        requireModule(moduleId);
+        CourseModule module = requireModule(moduleId);
         CodingTask task = findTask(moduleId, id);
+
+        boolean deactivate = task.isActive() && changesVerifiedCode(task, request);
+        if (deactivate) {
+            // Checked before anything is changed, so a refused edit leaves the task as it was.
+            requireNotLastActiveTask(module, task);
+        }
         apply(task, request);
+        if (deactivate) {
+            task.setActive(false);
+        }
 
         CodingTask saved = taskRepository.saveAndFlush(task);
         log.info("Coding task updated: id={}, moduleId={}, updatedByAdminId={}", id, moduleId, adminId);
+        if (deactivate) {
+            log.info("Coding task deactivated by an edit of its verified code: id={}, moduleId={}", id, moduleId);
+        }
         return CodingTaskResponse.from(saved, moduleId, caseRepository.countByCodingTaskId(id));
     }
 
@@ -190,11 +205,21 @@ public class AdminCodingTaskService {
      * The old cases are deleted and flushed before the new ones are inserted, otherwise Hibernate
      * (which runs inserts before deletes) would hit the unique (task, case number) key.
      * Results of earlier submissions are snapshots, so editing cases never rewrites history.
+     * <p>
+     * An active task whose inputs or expected outputs change is deactivated, it has to be verified again. The
+     * answer lists only the cases, so the client reads the task again to see that it became inactive.
      */
     @Transactional
     public List<CodingTaskCaseResponse> replaceCases(Long moduleId, Long id, CodingTaskCasesRequest request, Long adminId) {
-        requireModule(moduleId);
+        CourseModule module = requireModule(moduleId);
         CodingTask task = findTask(moduleId, id);
+
+        boolean deactivate = task.isActive()
+                && changesVerifiedCases(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(id), request.cases());
+        if (deactivate) {
+            // Checked before the old cases are deleted, so a refused edit changes nothing.
+            requireNotLastActiveTask(module, task);
+        }
 
         caseRepository.deleteByCodingTaskId(id);
         caseRepository.flush();
@@ -214,6 +239,11 @@ public class AdminCodingTaskService {
 
         log.info("Coding task cases replaced: taskId={}, moduleId={}, count={}, changedByAdminId={}",
                 id, moduleId, saved.size(), adminId);
+        if (deactivate) {
+            task.setActive(false);
+            taskRepository.saveAndFlush(task);
+            log.info("Coding task deactivated by an edit of its cases: id={}, moduleId={}", id, moduleId);
+        }
         return saved.stream().map(CodingTaskCaseResponse::from).toList();
     }
 
@@ -249,6 +279,29 @@ public class AdminCodingTaskService {
                 && taskRepository.countByModuleIdAndActiveTrue(module.getId()) <= 1) {
             throw new ModuleRequiresActiveTaskException(module.getId());
         }
+    }
+
+    /** The driver and the reference solution are compared after the same blank-to-null rule {@link #apply} uses. */
+    private static boolean changesVerifiedCode(CodingTask task, CodingTaskRequest request) {
+        return !Objects.equals(task.getDriverCode(), blankToNull(request.driverCode()))
+                || !Objects.equals(task.getReferenceSolution(), blankToNull(request.referenceSolution()));
+    }
+
+    /**
+     * What the verification checks is the input and the expected output at each position (the same fields as
+     * {@link ActivationSnapshot.Case}); the hidden flag only changes what a student sees, so it is not compared.
+     */
+    private static boolean changesVerifiedCases(List<CodingTaskCase> stored, List<CodingTaskCaseRequest> requested) {
+        if (stored.size() != requested.size()) {
+            return true;
+        }
+        for (int i = 0; i < stored.size(); i++) {
+            if (!Objects.equals(stored.get(i).getInputText(), requested.get(i).inputText())
+                    || !Objects.equals(stored.get(i).getExpectedOutput(), requested.get(i).expectedOutput())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Copies the request onto the entity. Never touches id, module or active. */
