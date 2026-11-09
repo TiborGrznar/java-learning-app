@@ -1,11 +1,15 @@
 package com.tgrznar.javalearningapp.user.model;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -92,4 +96,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
                                       @Param("schoolId") Long schoolId,
                                       @Param("role") UserRole role,
                                       @Param("studentId") Long studentId);
+
+    /**
+     * The students of the teacher's own classes in his current school among the given ids, locked for writing until
+     * the end of the transaction (UC-12). Ids outside the scope are simply missing from the answer. The rows come in
+     * ascending id order, so two requests that overlap lock them in the same order and cannot deadlock.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select u from User u join u.schoolClass c
+            where u.id in :studentIds
+              and u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+            order by u.id
+            """)
+    List<User> findTeacherStudentsForUpdate(@Param("teacherId") Long teacherId,
+                                            @Param("schoolId") Long schoolId,
+                                            @Param("role") UserRole role,
+                                            @Param("studentIds") Collection<Long> studentIds);
 }

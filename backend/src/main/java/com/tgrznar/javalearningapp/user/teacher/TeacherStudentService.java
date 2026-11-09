@@ -1,5 +1,6 @@
 package com.tgrznar.javalearningapp.user.teacher;
 
+import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
 import com.tgrznar.javalearningapp.common.PageResponse;
 import com.tgrznar.javalearningapp.learning.dto.ModuleStatus;
 import com.tgrznar.javalearningapp.learning.progress.StudentProgressService;
@@ -17,11 +18,13 @@ import com.tgrznar.javalearningapp.user.teacher.dto.ModuleCell;
 import com.tgrznar.javalearningapp.user.teacher.dto.ModuleHeader;
 import com.tgrznar.javalearningapp.user.teacher.dto.StudentOverviewResponse;
 import com.tgrznar.javalearningapp.user.teacher.dto.StudentOverviewRow;
+import com.tgrznar.javalearningapp.user.teacher.dto.StudentsActiveResponse;
 import com.tgrznar.javalearningapp.user.teacher.dto.TeacherStudentProgressResponse;
 import com.tgrznar.javalearningapp.user.teacher.dto.TeacherStudentSummary;
 import com.tgrznar.javalearningapp.userprogress.ProgressFlagsRow;
 import com.tgrznar.javalearningapp.userprogress.UserProgressRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,8 +33,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -49,6 +54,7 @@ import java.util.stream.Collectors;
  * The number of queries does not depend on the number of students: the teacher, the page of students (with its
  * count), the active modules and the progress flags of the students on the page.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TeacherStudentService {
@@ -63,6 +69,7 @@ public class TeacherStudentService {
     private final CourseModuleRepository moduleRepository;
     private final UserProgressRepository progressRepository;
     private final StudentProgressService studentProgressService;
+    private final RefreshTokenService refreshTokenService;
 
     /**
      * One page of the students of the teacher's own classes with their state in every active module.
@@ -107,6 +114,51 @@ public class TeacherStudentService {
 
         ProgressResponse progress = studentProgressService.get(student.getId());
         return new TeacherStudentProgressResponse(toSummary(student), progress);
+    }
+
+    /**
+     * Deactivates or reactivates the given students of the teacher's own classes in one step (UC-12). Deactivation
+     * pauses the account and keeps the progress; there is no separate archive state. All or nothing: when any id is
+     * outside the teacher's scope or unknown, the whole request is answered 404 and nothing is changed. A student
+     * who is already in the requested state is not an error, he is reported as unchanged.
+     * <p>
+     * The students are locked while they are changed, so a concurrent change by an administrator (a move to another
+     * school, a deletion) is decided one after another. Deactivation also revokes the refresh tokens of the changed
+     * students; reactivation does not bring them back.
+     */
+    @Transactional
+    public StudentsActiveResponse setActive(Long teacherId, List<Long> studentIds, boolean active) {
+        Long schoolId = requireTeacherSchoolId(teacherId);
+
+        List<Long> requested = studentIds.stream().distinct().sorted().toList();
+        List<User> students = userRepository.findTeacherStudentsForUpdate(
+                teacherId, schoolId, UserRole.STUDENT, requested);
+        if (students.size() != requested.size()) {
+            Set<Long> found = students.stream().map(User::getId).collect(Collectors.toSet());
+            Long missing = requested.stream().filter(id -> !found.contains(id)).findFirst().orElseThrow();
+            throw new UserNotFoundException(missing);
+        }
+
+        List<Long> changed = new ArrayList<>();
+        List<Long> unchanged = new ArrayList<>();
+        for (User student : students) {
+            if (student.isActive() == active) {
+                unchanged.add(student.getId());
+            } else {
+                student.setActive(active);
+                changed.add(student.getId());
+            }
+        }
+        userRepository.flush();
+
+        if (!active) {
+            changed.forEach(refreshTokenService::revokeAllForUser);
+        }
+
+        // E-mails are personal data, so only ids are logged.
+        log.info("Students active flag changed: active={}, changedIds={}, unchangedCount={}, changedByTeacherId={}",
+                active, changed, unchanged.size(), teacherId);
+        return new StudentsActiveResponse(active, changed, unchanged);
     }
 
     /**
