@@ -28,6 +28,12 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Long> 
     Optional<SchoolClass> findByIdAndTeacherId(Long id, Long teacherId);
 
     /**
+     * True when the class is led by the teacher and belongs to the given school (the teacher's current one).
+     * A teacher moved to another school no longer reaches the classes he led in the old one.
+     */
+    boolean existsByIdAndTeacherIdAndSchoolId(Long id, Long teacherId, Long schoolId);
+
+    /**
      * The class a student can join with this code: the class and its school must both be active. The school is
      * fetched because the enrollment response and the school check need it.
      */

@@ -45,4 +45,34 @@ public interface UserRepository extends JpaRepository<User, Long> {
                       @Param("role") UserRole role,
                       @Param("active") Boolean active,
                       Pageable pageable);
+
+    /**
+     * Students of the classes a teacher leads in his current school (UC-11). A null filter means "any". The
+     * class is fetched together with the student, and the order is part of the query because a sort by the
+     * fetched association would add a second join. The role is a parameter (always STUDENT), so no teacher or
+     * administrator can ever appear in the result.
+     */
+    @Query(value = """
+            select u from User u join fetch u.schoolClass c
+            where u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+              and (:classId is null or c.id = :classId)
+              and (:active is null or u.active = :active)
+            order by c.name, u.surname, u.name, u.id
+            """,
+            countQuery = """
+            select count(u) from User u join u.schoolClass c
+            where u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+              and (:classId is null or c.id = :classId)
+              and (:active is null or u.active = :active)
+            """)
+    Page<User> findTeacherStudents(@Param("teacherId") Long teacherId,
+                                   @Param("schoolId") Long schoolId,
+                                   @Param("role") UserRole role,
+                                   @Param("classId") Long classId,
+                                   @Param("active") Boolean active,
+                                   Pageable pageable);
 }
