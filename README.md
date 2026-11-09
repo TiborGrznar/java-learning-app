@@ -17,10 +17,10 @@ Work in progress.
 | Teacher: own classes and their join codes | Done        |
 | Student: modules with step-by-step unlocking, theory, quiz | Done        |
 | Rate limiting and request size limits | Done        |
-| Teacher: student overview and deactivation of students | Planned     |
+| Teacher: student overview and deactivation of students | Done        |
 | Administrator: coding tasks and their test cases | Done        |
 | Student: solving coding tasks (submission, evaluation in the sandbox) | Done        |
-| Student: progress overviews and archiving | Planned     |
+| Student: progress overview | Done        |
 | Sandboxed execution of student code | Done           |
 | Frontend (React + TypeScript) | Not started |
 
@@ -74,6 +74,9 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | GET | `/teacher/classes` | `TEACHER` | Classes led by the signed-in teacher. Filter `active` |
 | GET | `/teacher/classes/{id}` | `TEACHER` | Detail of an own class, including the join code. A class of another teacher answers `404 CLASS_NOT_FOUND` |
 | POST | `/teacher/classes/{id}/join-code` | `TEACHER` | Generates a new join code of an own class |
+| GET | `/teacher/students` | `TEACHER` | Page of the students of the teacher's own classes with their state in every active module (the module matrix). Filters `classId`, `active`; paging `page` (from 0, default 0) and `size` (default 20, at most 100); sorted by class name, surname, name, id. A class that is not the teacher's own answers `404 CLASS_NOT_FOUND`. See the rules of the teacher's student overview below |
+| GET | `/teacher/students/{studentId}/progress` | `TEACHER` | The progress of one student of the teacher's own classes: a short summary of the student and exactly what the student sees in `GET /learning/progress`. Any other id answers `404 USER_NOT_FOUND` |
+| PATCH | `/teacher/students/active` | `TEACHER` | Deactivates or reactivates up to 100 students of the teacher's own classes at once: `{"studentIds": [...], "active": false}`. All or nothing, one id outside the scope answers `404 USER_NOT_FOUND` for the whole request. The answer lists the `changed` and the `unchanged` ids. Deactivation also revokes the refresh tokens of the changed students |
 | POST | `/enrollments` | `STUDENT` | Joins the class with the given `joinCode` (`200`). See the class rules below |
 | GET | `/learning/modules` | `STUDENT` in a class | Active modules in course order with `locked` and `status`, without the theory text |
 | GET | `/learning/modules/{id}` | `STUDENT` in a class | Module with the theory text and progress flags. A locked module answers `403 MODULE_LOCKED` |
@@ -117,6 +120,15 @@ Rules of classes and enrollment:
 - A student who has not joined a class gets `403 NOT_ENROLLED` on everything under `/learning/**`. Teachers and administrators get `403 ACCESS_DENIED` there.
 - A module is unlocked when it is the first active one, when the student passed the quiz of the previous active module, or when the student already has progress in it.
 
+Rules of the teacher's student overview and bulk change:
+
+- A teacher sees and changes only the students of **their own classes** (`classes.teacher_id`) that belong to **the teacher's current school**. The school condition matters when a teacher who still leads only deactivated classes is moved to another school: the old classes then show nobody. A teacher without a class gets an empty page, a teacher without a school (or an inactive one) gets `403 ACCESS_DENIED`. The teacher is read from the database on every call, so a still valid access token does not help after a deactivation or a change of role.
+- A student outside this scope, a teacher, an administrator and an unknown id are indistinguishable: all answer `404 USER_NOT_FOUND` (`404 CLASS_NOT_FOUND` for a class filter), never `403`, so nothing about other accounts is revealed. The message does not say which id of a bulk request was refused.
+- Deactivated students and students of deactivated classes stay in the list (`active`, `classActive`), so they can be reactivated.
+- The overview answers `modules` (id, title, order of every active module) and `students`, a page whose rows hold the name, surname, e-mail, the class, `completedModules` and one cell per module with `status` (`NOT_STARTED`, `IN_PROGRESS`, `COMPLETED`) and the three flags. The detail holds the same data as the student's own overview. A teacher never gets submitted code, program output, error messages, join codes or password hashes. The number of database queries does not depend on the number of students.
+- The bulk change has no partial success. Repeated ids count once. A student who is already in the requested state is not an error, he is listed in `unchanged`. Two changes of the same students at the same time are decided one after another (the rows are locked), so every student is reported as changed once. Reactivation does not bring refresh tokens back, the student signs in again.
+- There is no separate archive: "archiving" a student means deactivating the account, the progress stays. Deactivating a class and deleting a student stay with administrators.
+
 Errors use a uniform JSON body. `code` is a stable identifier for client logic, `message` is a Slovak text for the user, `fieldErrors` is present only for validation errors:
 
 ```json
@@ -143,11 +155,11 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 403 | `MODULE_LOCKED` | The quiz of the previous module has not been passed yet |
 | 403 | `NOT_ENROLLED` | The student has not joined a class yet |
 | 404 | `SCHOOL_NOT_FOUND` | The school does not exist |
-| 404 | `USER_NOT_FOUND` | The user does not exist |
+| 404 | `USER_NOT_FOUND` | The user does not exist (for a teacher also: the user is not a student of the teacher's own classes) |
 | 404 | `MODULE_NOT_FOUND` | The module does not exist or is deactivated |
 | 404 | `QUESTION_NOT_FOUND` | The question does not exist in the given module |
 | 404 | `CODING_TASK_NOT_FOUND` | The coding task does not exist in the given module |
-| 404 | `CLASS_NOT_FOUND` | The class does not exist (or belongs to another teacher) |
+| 404 | `CLASS_NOT_FOUND` | The class does not exist (or does not belong to the calling teacher and the teacher's school) |
 | 404 | `INVALID_JOIN_CODE` | No active class of an active school has this join code |
 | 409 | `EMAIL_ALREADY_EXISTS` | The e-mail is already registered |
 | 409 | `SCHOOL_NAME_ALREADY_EXISTS` | A school with the same name exists |
@@ -438,6 +450,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   │   ├── model/        user entity, role, repository
 │       │   │   │   ├── admin/        user management by an administrator
 │       │   │   │   ├── dto/          request and response records
+│       │   │   │   ├── teacher/      student overview and bulk deactivation by a teacher
 │       │   │   │   ├── exception/    user exceptions
 │       │   │   │   └── bootstrap/    creation of the first administrator at startup
 │       │   │   ├── school/       school entity, repository, service, controller
