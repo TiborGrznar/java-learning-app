@@ -13,10 +13,11 @@ public enum ModuleStatus {
         if (progress == null) {
             return NOT_STARTED;
         }
-        boolean theory = progress.isTheoryCompleted();
-        boolean quiz = progress.isQuizCompleted();
-        boolean coding = progress.isCodingCompleted();
+        return of(progress.isTheoryCompleted(), progress.isQuizCompleted(), progress.isCodingCompleted());
+    }
 
+    /** The same rule for callers that have only the three flags and no entity. */
+    public static ModuleStatus of(boolean theory, boolean quiz, boolean coding) {
         if (theory && quiz && coding) {
             return COMPLETED;
         }

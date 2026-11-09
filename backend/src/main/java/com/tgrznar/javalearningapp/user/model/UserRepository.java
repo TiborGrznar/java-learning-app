@@ -1,11 +1,15 @@
 package com.tgrznar.javalearningapp.user.model;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -45,4 +49,70 @@ public interface UserRepository extends JpaRepository<User, Long> {
                       @Param("role") UserRole role,
                       @Param("active") Boolean active,
                       Pageable pageable);
+
+    /**
+     * Students of the classes a teacher leads in his current school (UC-11). A null filter means "any". The
+     * class is fetched together with the student, and the order is part of the query because a sort by the
+     * fetched association would add a second join. The role is a parameter (always STUDENT), so no teacher or
+     * administrator can ever appear in the result.
+     */
+    @Query(value = """
+            select u from User u join fetch u.schoolClass c
+            where u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+              and (:classId is null or c.id = :classId)
+              and (:active is null or u.active = :active)
+            order by c.name, u.surname, u.name, u.id
+            """,
+            countQuery = """
+            select count(u) from User u join u.schoolClass c
+            where u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+              and (:classId is null or c.id = :classId)
+              and (:active is null or u.active = :active)
+            """)
+    Page<User> findTeacherStudents(@Param("teacherId") Long teacherId,
+                                   @Param("schoolId") Long schoolId,
+                                   @Param("role") UserRole role,
+                                   @Param("classId") Long classId,
+                                   @Param("active") Boolean active,
+                                   Pageable pageable);
+
+    /**
+     * One student of the teacher's own classes in his current school (UC-11 detail), with the class fetched. The
+     * same scope as {@link #findTeacherStudents}: a student of another teacher, of another school, a teacher, an
+     * administrator and an unknown id all give an empty result.
+     */
+    @Query("""
+            select u from User u join fetch u.schoolClass c
+            where u.id = :studentId
+              and u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+            """)
+    Optional<User> findTeacherStudent(@Param("teacherId") Long teacherId,
+                                      @Param("schoolId") Long schoolId,
+                                      @Param("role") UserRole role,
+                                      @Param("studentId") Long studentId);
+
+    /**
+     * The students of the teacher's own classes in his current school among the given ids, locked for writing until
+     * the end of the transaction (UC-12). Ids outside the scope are simply missing from the answer. The rows come in
+     * ascending id order, so two requests that overlap lock them in the same order and cannot deadlock.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select u from User u join u.schoolClass c
+            where u.id in :studentIds
+              and u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+            order by u.id
+            """)
+    List<User> findTeacherStudentsForUpdate(@Param("teacherId") Long teacherId,
+                                            @Param("schoolId") Long schoolId,
+                                            @Param("role") UserRole role,
+                                            @Param("studentIds") Collection<Long> studentIds);
 }
