@@ -411,9 +411,9 @@ class AdminCodingTaskApiIntegrationTest {
     // ---------- update ----------
 
     @Test
-    void update_replacesAllFieldsAndKeepsTheActiveFlag() throws Exception {
+    void update_replacesAllFieldsOfAnInactiveTaskAndKeepsItInactive() throws Exception {
         CourseModule module = saveModule(true);
-        CodingTask task = saveTask(module, "Original", 1, true);
+        CodingTask task = saveTask(module, "Original", 1, false);
 
         as(put(taskUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
                 .content(taskJson(" New title ", "New description", "template", "driver", "reference", 7)), UserRole.ADMIN)
@@ -424,9 +424,80 @@ class AdminCodingTaskApiIntegrationTest {
                 .andExpect(jsonPath("$.driverCode").value("driver"))
                 .andExpect(jsonPath("$.referenceSolution").value("reference"))
                 .andExpect(jsonPath("$.orderNumber").value(7))
-                .andExpect(jsonPath("$.active").value(true));
+                .andExpect(jsonPath("$.active").value(false));
 
         assertThat(taskRepository.findById(task.getId()).orElseThrow().getTitle()).isEqualTo("New title");
+    }
+
+    @Test
+    void update_activeTask_changingOnlyTheTitleDescriptionTemplateAndOrder_keepsItActive() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Original", 1, true);
+
+        as(put(taskUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(taskJson("New title", "New description", "template", null, "class Solution { }", 7)), UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("New title"))
+                .andExpect(jsonPath("$.orderNumber").value(7))
+                .andExpect(jsonPath("$.active").value(true));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void update_activeTask_changedReferenceSolution_deactivatesIt() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Original", 1, true);
+        saveTask(module, "Another active task", 2, true);
+
+        as(put(taskUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(taskJson("Original", null, null, null, "class Solution { int x; }", 1)), UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.referenceSolution").value("class Solution { int x; }"))
+                .andExpect(jsonPath("$.active").value(false));
+
+        entityManager.flush();
+        entityManager.clear();
+        CodingTask stored = taskRepository.findById(task.getId()).orElseThrow();
+        assertThat(stored.isActive()).isFalse();
+        assertThat(stored.getReferenceSolution()).isEqualTo("class Solution { int x; }");
+        assertThat(fakeCodeRunner.calls()).isEmpty();
+    }
+
+    @Test
+    void update_activeTask_changedDriver_deactivatesIt() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Original", 1, true);
+        saveTask(module, "Another active task", 2, true);
+
+        as(put(taskUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(taskJson("Original", null, null, "public class Main {}", "class Solution { }", 1)), UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void update_onlyActiveTaskOfActiveModule_changedReferenceSolution_returns409AndChangesNothing() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Only task", 1, true);
+
+        as(put(taskUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(taskJson("Changed title", null, null, null, "class Solution { int x; }", 1)), UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MODULE_REQUIRES_ACTIVE_TASK"));
+
+        entityManager.flush();
+        entityManager.clear();
+        CodingTask stored = taskRepository.findById(task.getId()).orElseThrow();
+        assertThat(stored.isActive()).isTrue();
+        assertThat(stored.getTitle()).isEqualTo("Only task");
+        assertThat(stored.getReferenceSolution()).isEqualTo("class Solution { }");
     }
 
     @Test
@@ -832,6 +903,59 @@ class AdminCodingTaskApiIntegrationTest {
                 .content(casesJson(cases)), UserRole.ADMIN)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(20));
+    }
+
+    @Test
+    void replaceCases_activeTask_changedExpectedOutput_deactivatesIt() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Task", 1, true);
+        saveTask(module, "Another active task", 2, true);
+        saveCase(task, 1, "1", "1\n", false);
+
+        as(put(casesUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(casesJson(caseJson("1", "2\n", false))), UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].expectedOutput").value("2\n"));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isFalse();
+        assertThat(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(task.getId()))
+                .extracting(CodingTaskCase::getExpectedOutput).containsExactly("2\n");
+    }
+
+    @Test
+    void replaceCases_activeTask_sameInputsAndOutputs_keepsItActive() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Task", 1, true);
+        saveCase(task, 1, "1", "1\n", false);
+
+        as(put(casesUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(casesJson(caseJson("1", "1\n", true))), UserRole.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hidden").value(true));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void replaceCases_onlyActiveTaskOfActiveModule_changedCases_returns409AndKeepsTheOldCases() throws Exception {
+        CourseModule module = saveModule(true);
+        CodingTask task = saveTask(module, "Only task", 1, true);
+        saveCase(task, 1, "1", "1\n", false);
+
+        as(put(casesUrl(module.getId(), task.getId())).contentType(MediaType.APPLICATION_JSON)
+                .content(casesJson(caseJson("1", "2\n", false), caseJson("3", "3\n", false))), UserRole.ADMIN)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MODULE_REQUIRES_ACTIVE_TASK"));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(taskRepository.findById(task.getId()).orElseThrow().isActive()).isTrue();
+        assertThat(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(task.getId()))
+                .extracting(CodingTaskCase::getExpectedOutput).containsExactly("1\n");
     }
 
     @Test

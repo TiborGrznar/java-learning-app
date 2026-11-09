@@ -180,8 +180,8 @@ class AdminCodingTaskServiceTest {
     // ---------- update ----------
 
     @Test
-    void update_replacesAllFieldsAndKeepsTheActiveFlag() {
-        CodingTask task = task(TASK_ID, true);
+    void update_inactiveTask_replacesAllFieldsAndStaysInactive() {
+        CodingTask task = task(TASK_ID, false);
         givenModuleAndTask(true, task);
         when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -194,7 +194,95 @@ class AdminCodingTaskServiceTest {
         assertThat(response.driverCode()).isEqualTo("driver");
         assertThat(response.referenceSolution()).isEqualTo("reference");
         assertThat(response.orderNumber()).isEqualTo(7);
+        assertThat(response.active()).isFalse();
+        verify(taskRepository, never()).countByModuleIdAndActiveTrue(any());
+    }
+
+    @Test
+    void update_activeTask_changingOnlyTitleDescriptionTemplateAndOrder_keepsItActive() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CodingTaskResponse response = service.update(MODULE_ID, TASK_ID,
+                new CodingTaskRequest(" New title ", "New description", "template", null, "class Solution {}", 7), ADMIN_ID);
+
+        assertThat(response.title()).isEqualTo("New title");
+        assertThat(response.templateCode()).isEqualTo("template");
+        assertThat(response.orderNumber()).isEqualTo(7);
         assertThat(response.active()).isTrue();
+        verify(taskRepository, never()).countByModuleIdAndActiveTrue(any());
+    }
+
+    @Test
+    void update_activeTask_blankDriverEqualsNoDriver_keepsItActive() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CodingTaskResponse response = service.update(MODULE_ID, TASK_ID,
+                new CodingTaskRequest("Title", null, null, "  ", "class Solution {}", 1), ADMIN_ID);
+
+        assertThat(response.active()).isTrue();
+        assertThat(response.driverCode()).isNull();
+    }
+
+    @Test
+    void update_activeTask_changedReferenceSolution_deactivatesIt() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(2L);
+        when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CodingTaskResponse response = service.update(MODULE_ID, TASK_ID,
+                new CodingTaskRequest("Title", null, null, null, "class Solution { int x; }", 1), ADMIN_ID);
+
+        assertThat(response.active()).isFalse();
+        assertThat(response.referenceSolution()).isEqualTo("class Solution { int x; }");
+        assertThat(task.isActive()).isFalse();
+    }
+
+    @Test
+    void update_activeTask_changedDriver_deactivatesIt() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(2L);
+        when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CodingTaskResponse response = service.update(MODULE_ID, TASK_ID,
+                new CodingTaskRequest("Title", null, null, "public class Main {}", "class Solution {}", 1), ADMIN_ID);
+
+        assertThat(response.active()).isFalse();
+        assertThat(response.driverCode()).isEqualTo("public class Main {}");
+    }
+
+    @Test
+    void update_lastActiveTaskOfActiveModule_changedReferenceSolution_throwsAndChangesNothing() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.update(MODULE_ID, TASK_ID,
+                new CodingTaskRequest("Other title", null, null, null, "class Solution { int x; }", 3), ADMIN_ID))
+                .isInstanceOf(ModuleRequiresActiveTaskException.class);
+
+        assertThat(task.isActive()).isTrue();
+        assertThat(task.getReferenceSolution()).isEqualTo("class Solution {}");
+        assertThat(task.getTitle()).isEqualTo("Task " + TASK_ID);
+        verify(taskRepository, never()).saveAndFlush(any(CodingTask.class));
+    }
+
+    @Test
+    void update_activeTaskOfInactiveModule_changedReferenceSolution_deactivatesWithoutCounting() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(false, task);
+        when(taskRepository.saveAndFlush(any(CodingTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CodingTaskResponse response = service.update(MODULE_ID, TASK_ID,
+                new CodingTaskRequest("Title", null, null, null, "class Solution { int x; }", 1), ADMIN_ID);
+
+        assertThat(response.active()).isFalse();
+        verify(taskRepository, never()).countByModuleIdAndActiveTrue(any());
     }
 
     @Test
@@ -483,7 +571,7 @@ class AdminCodingTaskServiceTest {
 
     @Test
     void replaceCases_deletesFlushesThenInsertsNumberedByPosition() {
-        CodingTask task = task(TASK_ID, true);
+        CodingTask task = task(TASK_ID, false);
         givenModuleAndTask(true, task);
         when(caseRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -505,6 +593,79 @@ class AdminCodingTaskServiceTest {
         assertThat(inserted).extracting(CodingTaskCase::isHidden).containsExactly(false, true);
         assertThat(inserted).allSatisfy(c -> assertThat(c.getCodingTask()).isSameAs(task));
         assertThat(result).extracting(CodingTaskCaseResponse::number).containsExactly(1, 2);
+        assertThat(task.isActive()).isFalse();
+
+        verify(taskRepository, never()).countByModuleIdAndActiveTrue(any());
+    }
+
+    @Test
+    void replaceCases_activeTask_sameInputsAndOutputs_keepsItActiveEvenIfHiddenChanges() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID)).thenReturn(List.of(
+                testCase(1, "1 2", "3\n", false), testCase(2, "", "0\n", false)));
+        when(caseRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.replaceCases(MODULE_ID, TASK_ID,
+                new CodingTaskCasesRequest(List.of(
+                        new CodingTaskCaseRequest("1 2", "3\n", true),
+                        new CodingTaskCaseRequest("", "0\n", true))),
+                ADMIN_ID);
+
+        assertThat(task.isActive()).isTrue();
+        verify(taskRepository, never()).countByModuleIdAndActiveTrue(any());
+        verify(taskRepository, never()).saveAndFlush(any(CodingTask.class));
+    }
+
+    @Test
+    void replaceCases_activeTask_changedExpectedOutput_deactivatesIt() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3\n", false)));
+        when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(2L);
+        when(caseRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.replaceCases(MODULE_ID, TASK_ID,
+                new CodingTaskCasesRequest(List.of(new CodingTaskCaseRequest("1 2", "4\n", false))), ADMIN_ID);
+
+        assertThat(task.isActive()).isFalse();
+        verify(taskRepository).saveAndFlush(task);
+    }
+
+    @Test
+    void replaceCases_activeTask_differentNumberOfCases_deactivatesIt() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1", "1\n", false)));
+        when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(2L);
+        when(caseRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.replaceCases(MODULE_ID, TASK_ID,
+                new CodingTaskCasesRequest(List.of(
+                        new CodingTaskCaseRequest("1", "1\n", false),
+                        new CodingTaskCaseRequest("2", "2\n", false))),
+                ADMIN_ID);
+
+        assertThat(task.isActive()).isFalse();
+    }
+
+    @Test
+    void replaceCases_lastActiveTaskOfActiveModule_changedCases_throwsAndDeletesNothing() {
+        CodingTask task = task(TASK_ID, true);
+        givenModuleAndTask(true, task);
+        when(caseRepository.findByCodingTaskIdOrderByOrderNumberAsc(TASK_ID))
+                .thenReturn(List.of(testCase(1, "1 2", "3\n", false)));
+        when(taskRepository.countByModuleIdAndActiveTrue(MODULE_ID)).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.replaceCases(MODULE_ID, TASK_ID,
+                new CodingTaskCasesRequest(List.of(new CodingTaskCaseRequest("1 2", "4\n", false))), ADMIN_ID))
+                .isInstanceOf(ModuleRequiresActiveTaskException.class);
+
+        assertThat(task.isActive()).isTrue();
+        verify(caseRepository, never()).deleteByCodingTaskId(any());
+        verify(caseRepository, never()).saveAllAndFlush(anyList());
     }
 
     @Test
