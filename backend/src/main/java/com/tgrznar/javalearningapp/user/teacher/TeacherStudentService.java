@@ -2,11 +2,14 @@ package com.tgrznar.javalearningapp.user.teacher;
 
 import com.tgrznar.javalearningapp.common.PageResponse;
 import com.tgrznar.javalearningapp.learning.dto.ModuleStatus;
+import com.tgrznar.javalearningapp.learning.progress.StudentProgressService;
+import com.tgrznar.javalearningapp.learning.progress.dto.ProgressResponse;
 import com.tgrznar.javalearningapp.module.CourseModule;
 import com.tgrznar.javalearningapp.module.CourseModuleRepository;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClassRepository;
 import com.tgrznar.javalearningapp.schoolclass.exception.SchoolClassNotFoundException;
+import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
@@ -14,6 +17,8 @@ import com.tgrznar.javalearningapp.user.teacher.dto.ModuleCell;
 import com.tgrznar.javalearningapp.user.teacher.dto.ModuleHeader;
 import com.tgrznar.javalearningapp.user.teacher.dto.StudentOverviewResponse;
 import com.tgrznar.javalearningapp.user.teacher.dto.StudentOverviewRow;
+import com.tgrznar.javalearningapp.user.teacher.dto.TeacherStudentProgressResponse;
+import com.tgrznar.javalearningapp.user.teacher.dto.TeacherStudentSummary;
 import com.tgrznar.javalearningapp.userprogress.ProgressFlagsRow;
 import com.tgrznar.javalearningapp.userprogress.UserProgressRepository;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +62,7 @@ public class TeacherStudentService {
     private final SchoolClassRepository classRepository;
     private final CourseModuleRepository moduleRepository;
     private final UserProgressRepository progressRepository;
+    private final StudentProgressService studentProgressService;
 
     /**
      * One page of the students of the teacher's own classes with their state in every active module.
@@ -85,6 +91,22 @@ public class TeacherStudentService {
                 student, modules, flags.getOrDefault(student.getId(), Map.of())));
 
         return new StudentOverviewResponse(headers, PageResponse.from(rows));
+    }
+
+    /**
+     * The progress of one student of the teacher's own classes (UC-11 detail). It is exactly what the student sees
+     * in his own overview, built by the same service: statuses, the latest quiz result and the state of the coding
+     * tasks, never submitted code, program output or error messages. A student outside the scope, a teacher, an
+     * administrator and an unknown id all answer the same 404, so nothing about other accounts is revealed.
+     */
+    @Transactional(readOnly = true)
+    public TeacherStudentProgressResponse progress(Long teacherId, Long studentId) {
+        Long schoolId = requireTeacherSchoolId(teacherId);
+        User student = userRepository.findTeacherStudent(teacherId, schoolId, UserRole.STUDENT, studentId)
+                .orElseThrow(() -> new UserNotFoundException(studentId));
+
+        ProgressResponse progress = studentProgressService.get(student.getId());
+        return new TeacherStudentProgressResponse(toSummary(student), progress);
     }
 
     /**
@@ -133,6 +155,20 @@ public class TeacherStudentService {
                 schoolClass.isActive(),
                 completed,
                 cells);
+    }
+
+    private static TeacherStudentSummary toSummary(User student) {
+        // The class is fetched together with the student, so this does not query.
+        SchoolClass schoolClass = student.getSchoolClass();
+        return new TeacherStudentSummary(
+                student.getId(),
+                student.getName(),
+                student.getSurname(),
+                student.getEmail(),
+                student.isActive(),
+                schoolClass.getId(),
+                schoolClass.getName(),
+                schoolClass.isActive());
     }
 
     /** A student without a progress row has not started the module. */

@@ -75,4 +75,21 @@ public interface UserRepository extends JpaRepository<User, Long> {
                                    @Param("classId") Long classId,
                                    @Param("active") Boolean active,
                                    Pageable pageable);
+
+    /**
+     * One student of the teacher's own classes in his current school (UC-11 detail), with the class fetched. The
+     * same scope as {@link #findTeacherStudents}: a student of another teacher, of another school, a teacher, an
+     * administrator and an unknown id all give an empty result.
+     */
+    @Query("""
+            select u from User u join fetch u.schoolClass c
+            where u.id = :studentId
+              and u.role = :role
+              and c.teacher.id = :teacherId
+              and c.school.id = :schoolId
+            """)
+    Optional<User> findTeacherStudent(@Param("teacherId") Long teacherId,
+                                      @Param("schoolId") Long schoolId,
+                                      @Param("role") UserRole role,
+                                      @Param("studentId") Long studentId);
 }
