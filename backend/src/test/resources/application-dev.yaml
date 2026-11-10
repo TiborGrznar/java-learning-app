@@ -19,3 +19,4 @@ app:
     login-failures-per-email: { max: 100000 }
     quiz-load-per-user: { max: 100000 }
     coding-submit-per-user: { max: 100000 }
+    password-change-failures-per-user: { max: 100000 }
