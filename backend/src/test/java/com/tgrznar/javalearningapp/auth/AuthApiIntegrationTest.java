@@ -96,6 +96,28 @@ class AuthApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
     }
 
+    @Test
+    void register_acceptsPasswordOfExactly72BytesWithDiacritics() throws Exception {
+        String email = uniqueEmail();
+        // 36 characters of 2 bytes each
+        String password = "á".repeat(36);
+
+        register(email, password, password).andExpect(status().isCreated());
+
+        login(email, password).andExpect(status().isOk());
+    }
+
+    @Test
+    void register_rejectsPasswordOverTheByteLimitAlthoughItIsShortInCharacters() throws Exception {
+        // 37 characters, 74 bytes
+        String password = "á".repeat(37);
+
+        register(uniqueEmail(), password, password)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.fieldErrors.password").exists());
+    }
+
     // ---------- login ----------
 
     @Test
