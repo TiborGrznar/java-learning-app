@@ -4,8 +4,10 @@ import com.tgrznar.javalearningapp.auth.exception.AccountDisabledException;
 import com.tgrznar.javalearningapp.auth.exception.EmailAlreadyExistsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
+import com.tgrznar.javalearningapp.auth.exception.InvalidCurrentPasswordException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.auth.exception.PasswordUnchangedException;
 import com.tgrznar.javalearningapp.coderunner.CodeRunnerBusyException;
 import com.tgrznar.javalearningapp.coderunner.CodeRunnerUnavailableException;
 import com.tgrznar.javalearningapp.codingtask.dto.ReferenceSolutionFailedResponse;
@@ -66,6 +68,8 @@ import java.util.Map;
  * VALIDATION_ERROR               400     invalid form input, show fieldErrors next to the fields
  * INVALID_REQUEST_BODY           400     unreadable JSON, a client bug, not shown to the user
  * PASSWORD_MISMATCH              400     password and confirmation differ, show in the form
+ * INVALID_CURRENT_PASSWORD       400     the current password of a password change is wrong, show it at the field (not 401 on purpose, so the client does not take it for an expired session and does not try /refresh)
+ * PASSWORD_UNCHANGED             400     the new password equals the current one, show it at the field
  * INVALID_QUIZ_TOKEN             400     quiz token is not valid for this student and module, reload the quiz
  * INVALID_CREDENTIALS            401     wrong e-mail or password (indistinguishable on purpose)
  * INVALID_REFRESH_TOKEN          401     session expired, drop tokens and redirect to login
@@ -93,7 +97,7 @@ import java.util.Map;
  * ALREADY_ENROLLED               409     the student already belongs to a class
  * SCHOOL_MISMATCH                409     the student's school differs from the school of the class
  * TOO_MANY_ATTEMPTS              429     too many failed enrollment attempts, the Retry-After header says how long to wait
- * RATE_LIMITED                   429     too many requests from this address, e-mail or student, the Retry-After header says how long to wait
+ * RATE_LIMITED                   429     too many requests from this address, e-mail or user, the Retry-After header says how long to wait
  * PAYLOAD_TOO_LARGE              413     the request body exceeds the allowed size, a client bug
  * THEORY_NOT_COMPLETED           409     the module's theory was not marked as read yet, send the student to the theory
  * QUIZ_NOT_AVAILABLE             409     the module has no quiz questions, hide the quiz button
@@ -159,6 +163,20 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorResponse handlePasswordMismatch(PasswordMismatchException ex) {
         return ErrorResponse.of("PASSWORD_MISMATCH", ex.getMessage());
+    }
+
+    /** 400 INVALID_CURRENT_PASSWORD: the current password of a password change is wrong (not 401, that is for tokens). */
+    @ExceptionHandler(InvalidCurrentPasswordException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInvalidCurrentPassword(InvalidCurrentPasswordException ex) {
+        return ErrorResponse.of("INVALID_CURRENT_PASSWORD", ex.getMessage());
+    }
+
+    /** 400 PASSWORD_UNCHANGED: the new password of a password change equals the current one. */
+    @ExceptionHandler(PasswordUnchangedException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handlePasswordUnchanged(PasswordUnchangedException ex) {
+        return ErrorResponse.of("PASSWORD_UNCHANGED", ex.getMessage());
     }
 
     /** 409 EMAIL_ALREADY_EXISTS: registration with an e-mail that already has an account. */

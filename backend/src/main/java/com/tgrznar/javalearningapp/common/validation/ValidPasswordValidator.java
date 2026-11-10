@@ -11,7 +11,7 @@ public class ValidPasswordValidator implements ConstraintValidator<ValidPassword
     static final int MIN_LENGTH = 8;
 
     // BCrypt ignores everything beyond 72 bytes (bytes, not characters).
-    static final int MAX_BYTES = 72;
+    public static final int MAX_BYTES = 72;
 
     @Override
     public boolean isValid(String password, ConstraintValidatorContext context) {

@@ -1,15 +1,20 @@
 package com.tgrznar.javalearningapp.auth;
 
 import com.tgrznar.javalearningapp.auth.dto.AuthResponse;
+import com.tgrznar.javalearningapp.auth.dto.ChangePasswordRequest;
 import com.tgrznar.javalearningapp.auth.dto.LoginRequest;
 import com.tgrznar.javalearningapp.auth.dto.RefreshRequest;
 import com.tgrznar.javalearningapp.auth.dto.RegisterRequest;
 import com.tgrznar.javalearningapp.auth.exception.AccountDisabledException;
 import com.tgrznar.javalearningapp.auth.exception.EmailAlreadyExistsException;
+import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
+import com.tgrznar.javalearningapp.auth.exception.InvalidCurrentPasswordException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
+import com.tgrznar.javalearningapp.auth.exception.PasswordUnchangedException;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
+import com.tgrznar.javalearningapp.common.validation.ValidPasswordValidator;
 import com.tgrznar.javalearningapp.ratelimit.LimiterKeys;
 import com.tgrznar.javalearningapp.ratelimit.RateLimiter;
 import com.tgrznar.javalearningapp.ratelimit.RateLimiters;
@@ -20,10 +25,13 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import lombok.extern.slf4j.Slf4j;
+import java.nio.charset.StandardCharsets;
 
 import java.util.Locale;
 
 /** Registration, login, token refresh and logout (UC-01, UC-02). */
+@Slf4j
 @Service
 public class AuthService {
 
@@ -34,6 +42,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final RateLimiter loginFailures;
+    private final RateLimiter passwordChangeFailures;
 
     // Compared against when the e-mail is unknown, so that response time does not reveal
     // whether an account exists.
@@ -50,6 +59,7 @@ public class AuthService {
         this.refreshTokenService = refreshTokenService;
         this.loginFailures = rateLimiters.loginFailuresPerEmail();
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
+        this.passwordChangeFailures = rateLimiters.passwordChangeFailuresPerUser();
     }
 
     /** Self-service registration. The role is always STUDENT, the client cannot choose it. */
@@ -126,6 +136,54 @@ public class AuthService {
     @Transactional
     public void logout(RefreshRequest request) {
         refreshTokenService.revoke(request.refreshToken());
+    }
+
+    /**
+     * Changes the password of the logged-in user. The id comes from the verified token, never from the request.
+     * Wrong current passwords are counted per user, so a stolen access token cannot be used to guess the
+     * password; a successful change clears the counter. Every refresh token of the user is revoked, so the other
+     * devices have to log in again, and the caller gets a fresh token pair and stays logged in. Access tokens
+     * that were already issued stay valid until they expire.
+     */
+    @Transactional
+    public AuthResponse changePassword(Long userId, ChangePasswordRequest request) {
+        if (!request.newPassword().equals(request.confirmNewPassword())) {
+            throw new PasswordMismatchException();
+        }
+
+        // Unlike the JWT filter this reads the database, so a deleted or deactivated account is refused.
+        User user = userRepository.findById(userId).orElseThrow(InvalidAccessTokenException::new);
+        if (!user.isActive()) {
+            throw new AccountDisabledException();
+        }
+
+        String limiterKey = String.valueOf(userId);
+        passwordChangeFailures.check(limiterKey);
+
+        if (!currentPasswordMatches(request.currentPassword(), user)) {
+            passwordChangeFailures.record(limiterKey);
+            throw new InvalidCurrentPasswordException();
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new PasswordUnchangedException();
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.saveAndFlush(user);
+        refreshTokenService.revokeAllForUser(userId);
+        passwordChangeFailures.clear(limiterKey);
+
+        // Never log the password.
+        log.info("Password changed: userId={}", userId);
+        return buildResponse(user, refreshTokenService.issue(user));
+    }
+
+    /** A password longer than BCrypt can hash cannot be the current one, so the encoder is not asked about it. */
+    private boolean currentPasswordMatches(String candidate, User user) {
+        if (candidate.getBytes(StandardCharsets.UTF_8).length > ValidPasswordValidator.MAX_BYTES) {
+            return false;
+        }
+        return passwordEncoder.matches(candidate, user.getPasswordHash());
     }
 
     private AuthResponse buildResponse(User user, String refreshToken) {

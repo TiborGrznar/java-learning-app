@@ -13,6 +13,7 @@ public class RateLimiters {
     private final RateLimiter loginFailuresPerEmail;
     private final RateLimiter quizLoadPerUser;
     private final RateLimiter codingSubmitPerUser;
+    private final RateLimiter passwordChangeFailuresPerUser;
 
     public RateLimiters(RateLimitProperties properties) {
         int keys = properties.maxTrackedKeys();
@@ -23,6 +24,7 @@ public class RateLimiters {
         this.loginFailuresPerEmail = build(properties.loginFailuresPerEmail(), keys);
         this.quizLoadPerUser = build(properties.quizLoadPerUser(), keys);
         this.codingSubmitPerUser = build(properties.codingSubmitPerUser(), keys);
+        this.passwordChangeFailuresPerUser = build(properties.passwordChangeFailuresPerUser(), keys);
     }
 
     private static RateLimiter build(RateLimitProperties.Rule rule, int maxKeys) {
@@ -55,5 +57,9 @@ public class RateLimiters {
 
     public RateLimiter codingSubmitPerUser() {
         return codingSubmitPerUser;
+    }
+
+    public RateLimiter passwordChangeFailuresPerUser() {
+        return passwordChangeFailuresPerUser;
     }
 }
