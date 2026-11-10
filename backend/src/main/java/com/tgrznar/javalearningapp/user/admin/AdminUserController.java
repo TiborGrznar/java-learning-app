@@ -78,6 +78,18 @@ public class AdminUserController {
         return adminUserService.setActive(id, request.active(), adminId);
     }
 
+    /**
+     * Resets the password of the user to a generated temporary one and ends the user's sessions. The answer
+     * carries the one-time password, so it must not be cached.
+     */
+    @PostMapping("/{id}/password-reset")
+    public ResponseEntity<PasswordResetResponse> resetPassword(@PathVariable Long id,
+                                                               @AuthenticationPrincipal Long adminId) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(adminUserService.resetPassword(id, adminId));
+    }
+
     /** Deletes a student for good. The student's e-mail has to be repeated in {@code confirmEmail}. */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

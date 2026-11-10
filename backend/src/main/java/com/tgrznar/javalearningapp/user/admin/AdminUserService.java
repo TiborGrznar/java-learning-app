@@ -211,6 +211,30 @@ public class AdminUserService {
     }
 
     /**
+     * Gives any account, also a deactivated one, a new generated password and revokes all its refresh tokens, so
+     * the old sessions end. The temporary password is returned once and is never stored in plain text or logged.
+     * An administrator cannot reset their own password here: the password change asks for the current one.
+     * Known limits: an access token that was already issued stays valid until it expires, and the user may keep
+     * the temporary password, because a forced change is not implemented.
+     */
+    @Transactional
+    public PasswordResetResponse resetPassword(Long id, Long adminId) {
+        User user = findOrThrow(id);
+        if (user.getId().equals(adminId)) {
+            throw new SelfModificationException();
+        }
+
+        String temporaryPassword = passwordGenerator.generate();
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        User saved = userRepository.saveAndFlush(user);
+        refreshTokenService.revokeAllForUser(saved.getId());
+
+        // Never log the password.
+        log.info("User password reset: id={}, resetByAdminId={}", saved.getId(), adminId);
+        return new PasswordResetResponse(UserResponse.from(saved), temporaryPassword);
+    }
+
+    /**
      * Permanently deletes a student. His refresh tokens, progress and results go with him (cascade in the
      * database). Teachers and administrators are never deleted, they are deactivated. The caller has to repeat
      * the student's e-mail, so a wrong id or a misclick does not destroy data.

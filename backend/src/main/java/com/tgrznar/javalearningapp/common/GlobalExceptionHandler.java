@@ -90,7 +90,7 @@ import java.util.Map;
  * SCHOOL_NAME_ALREADY_EXISTS     409     school name is taken, show in the school form
  * SCHOOL_INACTIVE                409     school is deactivated, ask the admin to choose another one
  * LAST_ADMIN                     409     the last active administrator cannot be deactivated or demoted, show a message
- * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role or deactivate self, show a message
+ * SELF_MODIFICATION_NOT_ALLOWED  409     admin cannot change own role, deactivate self or reset own password (use the password change), show a message
  * USER_NOT_DELETABLE             409     only a student can be deleted, the user is a teacher or an administrator, offer deactivation instead
  * TEACHER_LEADS_CLASSES          409     the teacher leads an active class and cannot be deactivated, demoted or moved, reassign or deactivate the class first
  * INVALID_JOIN_CODE              404     no active class with an active school has this join code (unknown and inactive are not told apart)
@@ -404,12 +404,12 @@ public class GlobalExceptionHandler {
         return ErrorResponse.of("LAST_ADMIN", "Nemožno odobrať posledného aktívneho administrátora");
     }
 
-    /** 409 SELF_MODIFICATION_NOT_ALLOWED: an administrator tried to change own role or deactivate self. */
+    /** 409 SELF_MODIFICATION_NOT_ALLOWED: an administrator tried to change own role, deactivate self or reset own password. */
     @ExceptionHandler(SelfModificationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleSelfModification() {
         return ErrorResponse.of("SELF_MODIFICATION_NOT_ALLOWED",
-                "Nemôžete zmeniť vlastnú rolu ani deaktivovať vlastný účet");
+                "Na vlastnom účte nemôžete zmeniť rolu, deaktivovať ho ani resetovať heslo");
     }
 
     /** 409 USER_NOT_DELETABLE: only students are deleted, teachers and administrators are deactivated. */
