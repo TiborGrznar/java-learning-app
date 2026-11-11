@@ -22,6 +22,7 @@ Work in progress.
 | Student: solving coding tasks (submission, evaluation in the sandbox) | Done        |
 | Student: progress overview | Done        |
 | Sandboxed execution of student code | Done           |
+| Password change (own) and password reset by an administrator | Done |
 | Frontend (React + TypeScript) | Not started |
 
 ## API
@@ -35,6 +36,7 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | POST | `/auth/refresh` | public | Exchanges a refresh token for a new token pair, the old refresh token is revoked. A refresh token works once: if two requests send the same token at the same time, exactly one gets a new pair and the other one gets `401`. A deactivated account is refused (`ACCOUNT_DISABLED`) |
 | POST | `/auth/logout` | public | Revokes the given refresh token (`204`) |
 | GET | `/users/me` | any signed-in user | Profile of the signed-in user |
+| PUT | `/users/me/password` | any signed-in user | Changes the own password. Body `currentPassword`, `newPassword`, `confirmNewPassword`. Revokes all refresh tokens and answers with a new token pair (same shape as the login, `Cache-Control: no-store`), so the caller stays signed in and the other devices have to log in again |
 | POST | `/schools` | `ADMIN` | Creates a school (`201`). The name must be unique |
 | GET | `/schools` | `ADMIN` | Lists schools |
 | GET | `/schools/{id}` | `ADMIN` | Detail of a school |
@@ -46,6 +48,7 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | PUT | `/users/{id}` | `ADMIN` | Replaces name, surname, e-mail and school. The role and the active flag have their own endpoints. A student whose school changes leaves the class |
 | PATCH | `/users/{id}/role` | `ADMIN` | Changes the role. Changing to `TEACHER` needs a school. A student who changes role leaves the class |
 | PATCH | `/users/{id}/active` | `ADMIN` | Deactivates or reactivates an account. Deactivation also revokes all refresh tokens of the user |
+| POST | `/users/{id}/password-reset` | `ADMIN` | Gives a user (a student, a teacher or another administrator, also a deactivated one) a generated temporary password and revokes all their refresh tokens. The password is in the response only once (`Cache-Control: no-store`) and is never logged. Own account: `409 SELF_MODIFICATION_NOT_ALLOWED` |
 | DELETE | `/users/{id}?confirmEmail=...` | `ADMIN` | Deletes a student for good (`204`) together with their progress, results and tokens. `confirmEmail` must repeat the student's e-mail. Teachers and administrators cannot be deleted |
 | POST | `/modules` | `ADMIN` | Creates a learning module (`201`). A new module is inactive until it gets an active coding task |
 | GET | `/modules` | `ADMIN` | Lists modules |
@@ -107,7 +110,12 @@ Rules of submissions:
 
 Comparison of the output (for task authors): line endings `\r\n` and `\n` are the same, spaces at the end of a line (not tabs) and blank lines at the end are ignored, everything else must match exactly: letter case, spaces inside and at the start of a line, blank lines in the middle, and numbers character by character (`3.0` is not `3`).
 
-Rules of user management: an administrator cannot change their own role or deactivate themselves, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them. There is no password change yet, so the temporary password of a new teacher stays valid until that is implemented.
+Rules of user management: an administrator cannot change their own role, deactivate themselves or reset their own password, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them.
+
+**Passwords.** A password has at least 8 characters and at most 72 bytes (BCrypt ignores the rest; a character with diacritics takes more than one byte), the check is the same for registration and password change.
+- *Change* (`PUT /users/me/password`): the current password is verified, the new one has to differ from it (`400 PASSWORD_UNCHANGED`) and has to match its confirmation (`400 PASSWORD_MISMATCH`). A wrong current password answers `400 INVALID_CURRENT_PASSWORD` (not 401, so a client does not take it for an expired session), 5 wrong attempts per user within 15 minutes answer `429 RATE_LIMITED`, and a successful change clears the counter. The user is loaded from the database, so a deactivated or deleted account is refused even with a still valid access token (`403 ACCOUNT_DISABLED`, `401 INVALID_TOKEN`).
+- *Reset* (`POST /users/{id}/password-reset`): an administrator hands the temporary password over to the user. There is no e-mail reset, no forced change of the temporary password and a teacher cannot reset the password of a student.
+- Both operations revoke all refresh tokens of the user. An access token that was already issued stays valid until it expires (15 minutes), because `is_active` and the password are not checked per request.
 
 Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
 
@@ -144,6 +152,8 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 400 | `VALIDATION_ERROR` | A field is missing or invalid, details in `fieldErrors` |
 | 400 | `INVALID_REQUEST_BODY` | The body is not valid JSON or contains an unknown value (e.g. an unknown role) |
 | 400 | `PASSWORD_MISMATCH` | Password and its confirmation differ |
+| 400 | `INVALID_CURRENT_PASSWORD` | The current password of a password change is wrong (not 401 on purpose: it does not mean an expired session) |
+| 400 | `PASSWORD_UNCHANGED` | The new password is the same as the current one |
 | 400 | `INVALID_QUIZ_TOKEN` | The quiz token is malformed or was issued for someone else, load the quiz again |
 | 413 | `PAYLOAD_TOO_LARGE` | The request body exceeds the allowed size, a client bug |
 | 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
@@ -165,7 +175,7 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 409 | `SCHOOL_NAME_ALREADY_EXISTS` | A school with the same name exists |
 | 409 | `SCHOOL_INACTIVE` | The school is deactivated and cannot get new users |
 | 409 | `LAST_ADMIN` | The last active administrator cannot be removed |
-| 409 | `SELF_MODIFICATION_NOT_ALLOWED` | An administrator cannot change their own role or deactivate themselves |
+| 409 | `SELF_MODIFICATION_NOT_ALLOWED` | An administrator cannot change their own role, deactivate themselves or reset their own password (they use the password change) |
 | 409 | `USER_NOT_DELETABLE` | Only a student can be deleted, a teacher or an administrator is deactivated |
 | 409 | `CLASS_NAME_ALREADY_EXISTS` | The school already has a class with this name |
 | 409 | `TEACHER_LEADS_CLASSES` | The teacher leads an active class, reassign or deactivate the class first |
@@ -183,7 +193,7 @@ Errors use a uniform JSON body. `code` is a stable identifier for client logic, 
 | 409 | `VERIFICATION_IN_PROGRESS` | Another reference solution is being verified, retry in a moment |
 | 409 | `CODING_TASK_CHANGED` | The task was edited while its reference solution was verified, nothing was activated, review the task and activate it again |
 | 429 | `TOO_MANY_ATTEMPTS` | Too many failed enrollment attempts, the `Retry-After` header says how many seconds to wait |
-| 429 | `RATE_LIMITED` | Too many requests from this address, for this e-mail or from this student, the `Retry-After` header says how many seconds to wait |
+| 429 | `RATE_LIMITED` | Too many requests from this address, for this e-mail or from this user, the `Retry-After` header says how many seconds to wait |
 | 500 | `CODE_RUNNER_UNAVAILABLE` | The code runner is down, misconfigured or sent a broken answer, a server fault (the details are only in the server log) |
 | 503 | `CODE_RUNNER_BUSY` | The code runner has no free capacity, the `Retry-After` header says how many seconds to wait |
 
@@ -200,6 +210,7 @@ Limits are kept in memory (`ratelimit/RateLimiter`, a sliding window), so they r
 | failed logins | hash of the e-mail, any IP | 5 per 15 minutes |
 | quiz load | student id | 20 per minute |
 | coding submission | student id | 10 per minute |
+| wrong current password in a password change | user id | 5 per 15 minutes |
 
 All values are configurable under `app.rate-limit.*`. A limit answers `429 RATE_LIMITED` with a `Retry-After` header. The number of tracked keys is bounded, so forged addresses cannot exhaust memory.
 
@@ -420,7 +431,7 @@ Only an administrator can create teachers and other administrators, so the first
 
 The application refuses to start when the configuration is unusable: only one of `ADMIN_EMAIL` and `ADMIN_PASSWORD` is set, the e-mail is malformed, the password has fewer than 12 characters or more than 72 bytes (characters with diacritics take more than one byte), or an account with that e-mail already exists.
 
-**Recovery.** There is no password reset or password change yet. If no administrator can log in, delete the administrator in the database and start the application again with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set:
+**Recovery.** A forgotten password of an administrator can be reset by another administrator (`POST /users/{id}/password-reset`). If no administrator can log in at all, delete the administrator in the database and start the application again with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set:
 
 ```sql
 DELETE FROM users WHERE role = 'admin';
