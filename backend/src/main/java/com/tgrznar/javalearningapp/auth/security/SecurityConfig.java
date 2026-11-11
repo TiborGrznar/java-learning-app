@@ -54,7 +54,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** BCrypt for user passwords; its 72-byte input limit is why RegisterRequest caps the length at 72. */
+    /** BCrypt for user passwords. It hashes only the first 72 bytes, which is why passwords are checked by @ValidPassword. */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();

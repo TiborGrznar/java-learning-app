@@ -1,5 +1,6 @@
 package com.tgrznar.javalearningapp.auth.dto;
 
+import com.tgrznar.javalearningapp.common.validation.ValidPassword;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -20,9 +21,9 @@ public record RegisterRequest(
         @Size(max = 255, message = "E-mail môže mať najviac 255 znakov")
         String email,
 
-        // Max 72 because BCrypt ignores everything beyond 72 bytes.
+        // BCrypt ignores everything beyond 72 bytes, so the limit is counted in bytes (see ValidPassword).
         @NotBlank(message = "Heslo je povinné")
-        @Size(min = 8, max = 72, message = "Heslo musí mať 8 až 72 znakov")
+        @ValidPassword
         String password,
 
         @NotBlank(message = "Potvrdenie hesla je povinné")
