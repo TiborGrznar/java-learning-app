@@ -1,6 +1,7 @@
 package com.tgrznar.javalearningapp.user.admin;
 
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
+import com.tgrznar.javalearningapp.ratelimit.RateLimiters;
 import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.SchoolRepository;
 import com.tgrznar.javalearningapp.schoolclass.SchoolClass;
@@ -9,6 +10,7 @@ import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,6 +43,10 @@ abstract class AdminUserServiceTestBase {
 
     @Mock
     protected SchoolClassRepository classRepository;
+
+    // Deep stubs: every limiter accessor returns the same mock limiter, so a test can verify clear(...) on it.
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    protected RateLimiters rateLimiters;
 
     @InjectMocks
     protected AdminUserService service;

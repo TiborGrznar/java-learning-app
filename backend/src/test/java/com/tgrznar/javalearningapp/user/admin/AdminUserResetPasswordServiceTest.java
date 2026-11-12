@@ -1,5 +1,6 @@
 package com.tgrznar.javalearningapp.user.admin;
 
+import com.tgrznar.javalearningapp.ratelimit.LimiterKeys;
 import com.tgrznar.javalearningapp.user.dto.PasswordResetResponse;
 import com.tgrznar.javalearningapp.user.exception.SelfModificationException;
 import com.tgrznar.javalearningapp.user.exception.UserNotFoundException;
@@ -49,6 +50,21 @@ class AdminUserResetPasswordServiceTest extends AdminUserServiceTestBase {
     }
 
     @Test
+    void resetPassword_clearsTheFailedLoginAndFailedChangeCountersOfTheUser() {
+        User target = user(10L, UserRole.STUDENT, true, null);
+        when(userRepository.findById(10L)).thenReturn(Optional.of(target));
+        when(passwordGenerator.generate()).thenReturn(TEMP_PASSWORD);
+        when(passwordEncoder.encode(TEMP_PASSWORD)).thenReturn(NEW_HASH);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.resetPassword(10L, ADMIN_ID);
+
+        // Same keys as in AuthService: hash of the normalized e-mail, and the user id.
+        verify(rateLimiters.loginFailuresPerEmail()).clear(LimiterKeys.hashed("jano10@example.com"));
+        verify(rateLimiters.passwordChangeFailuresPerUser()).clear("10");
+    }
+
+    @Test
     void resetPassword_deactivatedAccount_isReset_andStaysDeactivated() {
         User target = user(10L, UserRole.STUDENT, false, null);
         when(userRepository.findById(10L)).thenReturn(Optional.of(target));
@@ -70,7 +86,7 @@ class AdminUserResetPasswordServiceTest extends AdminUserServiceTestBase {
         assertThatThrownBy(() -> service.resetPassword(ADMIN_ID, ADMIN_ID))
                 .isInstanceOf(SelfModificationException.class);
 
-        verifyNoInteractions(passwordGenerator, passwordEncoder, refreshTokenService);
+        verifyNoInteractions(passwordGenerator, passwordEncoder, refreshTokenService, rateLimiters);
         verify(userRepository, never()).saveAndFlush(any());
     }
 
@@ -81,7 +97,7 @@ class AdminUserResetPasswordServiceTest extends AdminUserServiceTestBase {
         assertThatThrownBy(() -> service.resetPassword(10L, ADMIN_ID))
                 .isInstanceOf(UserNotFoundException.class);
 
-        verifyNoInteractions(passwordGenerator, passwordEncoder, refreshTokenService);
+        verifyNoInteractions(passwordGenerator, passwordEncoder, refreshTokenService, rateLimiters);
         verify(userRepository, never()).saveAndFlush(any());
     }
 

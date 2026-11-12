@@ -3,6 +3,8 @@ package com.tgrznar.javalearningapp.user.admin;
 import com.tgrznar.javalearningapp.auth.exception.EmailAlreadyExistsException;
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
 import com.tgrznar.javalearningapp.common.PageResponse;
+import com.tgrznar.javalearningapp.ratelimit.LimiterKeys;
+import com.tgrznar.javalearningapp.ratelimit.RateLimiters;
 import com.tgrznar.javalearningapp.school.School;
 import com.tgrznar.javalearningapp.school.exception.SchoolInactiveException;
 import com.tgrznar.javalearningapp.school.exception.SchoolNotFoundException;
@@ -45,6 +47,7 @@ public class AdminUserService {
     private final TemporaryPasswordGenerator passwordGenerator;
     private final RefreshTokenService refreshTokenService;
     private final SchoolClassRepository classRepository;
+    private final RateLimiters rateLimiters;
 
     /** Creates a teacher or an administrator with a generated temporary password. */
     @Transactional
@@ -214,6 +217,8 @@ public class AdminUserService {
      * Gives any account, also a deactivated one, a new generated password and revokes all its refresh tokens, so
      * the old sessions end. The temporary password is returned once and is never stored in plain text or logged.
      * An administrator cannot reset their own password here: the password change asks for the current one.
+     * The failed-login and failed-password-change counters of the user are cleared, so a user who was locked out
+     * can use the new password at once (the keys are the same as in AuthService).
      * Known limits: an access token that was already issued stays valid until it expires, and the user may keep
      * the temporary password, because a forced change is not implemented.
      */
@@ -228,6 +233,8 @@ public class AdminUserService {
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         User saved = userRepository.saveAndFlush(user);
         refreshTokenService.revokeAllForUser(saved.getId());
+        rateLimiters.loginFailuresPerEmail().clear(LimiterKeys.hashed(normalizeEmail(saved.getEmail())));
+        rateLimiters.passwordChangeFailuresPerUser().clear(String.valueOf(saved.getId()));
 
         // Never log the password.
         log.info("User password reset: id={}, resetByAdminId={}", saved.getId(), adminId);
