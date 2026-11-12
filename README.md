@@ -107,17 +107,15 @@ Rules of submissions:
 - The answer holds `status` (`PASSED`, `COMPILE_ERROR`, `RUNTIME_ERROR`, `TIMEOUT` or `FAILED`), `passed`, `passedCases`, `totalCases`, `errorMessage`, `actualOutput`, the outcome of every case in `cases` and `moduleCodingCompleted`. Overall status: `PASSED` when every case passes, `COMPILE_ERROR` when the code does not compile (`TIMEOUT` when the compilation itself takes too long), otherwise the status of the first failing case. Running out of memory counts as a runtime error.
 - A visible case that fails shows the message of the runner (for an exception the type, the text and the line, e.g. `ArrayIndexOutOfBoundsException: Index 5 out of bounds for length 3`) and, for a wrong answer, what the program printed. A hidden case shows only its number and verdict; after an exception it adds the type and the line in the student's own file (`Výnimka NullPointerException (Solution.java, riadok 4)`) when the type is a well-known JDK exception, and never the text of the exception, because that could carry the hidden input.
 - Every submission with a verdict is stored as a result (the history stays). The coding part of a module is completed when the student has a passed result for every currently active task of the module, and it stays completed afterwards.
-
-Comparison of the output (for task authors): line endings `\r\n` and `\n` are the same, spaces at the end of a line (not tabs) and blank lines at the end are ignored, everything else must match exactly: letter case, spaces inside and at the start of a line, blank lines in the middle, and numbers character by character (`3.0` is not `3`).
+  Comparison of the output (for task authors): line endings `\r\n` and `\n` are the same, spaces at the end of a line (not tabs) and blank lines at the end are ignored, everything else must match exactly: letter case, spaces inside and at the start of a line, blank lines in the middle, and numbers character by character (`3.0` is not `3`).
 
 Rules of user management: an administrator cannot change their own role, deactivate themselves or reset their own password, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them.
 
 **Passwords.** A password has at least 8 characters and at most 72 bytes (BCrypt ignores the rest; a character with diacritics takes more than one byte), the check is the same for registration and password change.
 - *Change* (`PUT /users/me/password`): the current password is verified, the new one has to differ from it (`400 PASSWORD_UNCHANGED`) and has to match its confirmation (`400 PASSWORD_MISMATCH`). A wrong current password answers `400 INVALID_CURRENT_PASSWORD` (not 401, so a client does not take it for an expired session), 5 wrong attempts per user within 15 minutes answer `429 RATE_LIMITED`, and a successful change clears the counter. The user is loaded from the database, so a deactivated or deleted account is refused even with a still valid access token (`403 ACCOUNT_DISABLED`, `401 INVALID_TOKEN`).
-- *Reset* (`POST /users/{id}/password-reset`): an administrator hands the temporary password over to the user. There is no e-mail reset, no forced change of the temporary password and a teacher cannot reset the password of a student.
+- *Reset* (`POST /users/{id}/password-reset`): an administrator hands the temporary password over to the user. The failed-login and failed-password-change counters of that user are cleared, so a locked-out user can sign in with the temporary password at once. There is no e-mail reset, no forced change of the temporary password and a teacher cannot reset the password of a student.
 - Both operations revoke all refresh tokens of the user. An access token that was already issued stays valid until it expires (15 minutes), because `is_active` and the password are not checked per request.
-
-Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
+  Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
 
 Rules of classes and enrollment:
 
@@ -127,8 +125,7 @@ Rules of classes and enrollment:
 - After 5 failed attempts within 15 minutes a student answers `429 TOO_MANY_ATTEMPTS` with a `Retry-After` header. The counter lives in memory of one application instance.
 - A student who has not joined a class gets `403 NOT_ENROLLED` on everything under `/learning/**`. Teachers and administrators get `403 ACCESS_DENIED` there.
 - A module is unlocked when it is the first active one, when the student passed the quiz of the previous active module, or when the student already has progress in it.
-
-Rules of the teacher's student overview and bulk change:
+  Rules of the teacher's student overview and bulk change:
 
 - A teacher sees and changes only the students of **their own classes** (`classes.teacher_id`) that belong to **the teacher's current school**. The school condition matters when a teacher who still leads only deactivated classes is moved to another school: the old classes then show nobody. A teacher without a class gets an empty page, a teacher without a school (or an inactive one) gets `403 ACCESS_DENIED`. The teacher is read from the database on every call, so a still valid access token does not help after a deactivation or a change of role.
 - A student outside this scope, a teacher, an administrator and an unknown id are indistinguishable: all answer `404 USER_NOT_FOUND` (`404 CLASS_NOT_FOUND` for a class filter), never `403`, so nothing about other accounts is revealed. The message does not say which id of a bulk request was refused.
@@ -136,8 +133,7 @@ Rules of the teacher's student overview and bulk change:
 - The overview answers `modules` (id, title, order of every active module) and `students`, a page whose rows hold the name, surname, e-mail, the class, `completedModules` and one cell per module with `status` (`NOT_STARTED`, `IN_PROGRESS`, `COMPLETED`) and the three flags. The detail holds the same data as the student's own overview. A teacher never gets submitted code, program output, error messages, join codes or password hashes. The number of database queries does not depend on the number of students.
 - The bulk change has no partial success. Repeated ids count once. A student who is already in the requested state is not an error, he is listed in `unchanged`. Two changes of the same students at the same time are decided one after another (the rows are locked), so every student is reported as changed once. Reactivation does not bring refresh tokens back, the student signs in again.
 - There is no separate archive: "archiving" a student means deactivating the account, the progress stays. Deactivating a class and deleting a student stay with administrators.
-
-Errors use a uniform JSON body. `code` is a stable identifier for client logic, `message` is a Slovak text for the user, `fieldErrors` is present only for validation errors:
+  Errors use a uniform JSON body. `code` is a stable identifier for client logic, `message` is a Slovak text for the user, `fieldErrors` is present only for validation errors:
 
 ```json
 {
@@ -332,16 +328,14 @@ Docker Desktop is enough for development. In production run Docker rootless or u
 - **Database:** MySQL 8.4 LTS (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
 - **Code runner:** a separate Spring Boot service (`runner/`) that runs student code in disposable Docker containers
-
-Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
+  Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
 
 ## Prerequisites
 
 - JDK 25
 - Docker (for the local MySQL container, for the tests, which start their own MySQL container, and for the code runner)
 - Git
-
-Maven is not required, the repository contains the Maven Wrapper.
+  Maven is not required, the repository contains the Maven Wrapper.
 
 ## Getting started
 
@@ -428,8 +422,7 @@ Only an administrator can create teachers and other administrators, so the first
 2. If the database contains no administrator, the account is created and the log shows `Created the first administrator account ...`. If an administrator already exists, the variables are ignored: an existing account is never changed or replaced, and an existing student or teacher account is never promoted.
 3. Log in with `POST /api/v1/auth/login`.
 4. Remove `ADMIN_PASSWORD` from the environment. The password is stored only as a hash, the variable is not needed any more.
-
-The application refuses to start when the configuration is unusable: only one of `ADMIN_EMAIL` and `ADMIN_PASSWORD` is set, the e-mail is malformed, the password has fewer than 12 characters or more than 72 bytes (characters with diacritics take more than one byte), or an account with that e-mail already exists.
+   The application refuses to start when the configuration is unusable: only one of `ADMIN_EMAIL` and `ADMIN_PASSWORD` is set, the e-mail is malformed, the password has fewer than 12 characters or more than 72 bytes (characters with diacritics take more than one byte), or an account with that e-mail already exists.
 
 **Recovery.** A forgotten password of an administrator can be reset by another administrator (`POST /users/{id}/password-reset`). If no administrator can log in at all, delete the administrator in the database and start the application again with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set:
 
@@ -502,3 +495,4 @@ Schema changes are managed by Flyway. An applied migration is never edited, ever
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `refactor:`, `test:`, `docs:`, `ci:`).
 - Dependency and build changes are committed separately from feature code.
 - Files are staged by explicit path, not with `git add .`.
+ 
