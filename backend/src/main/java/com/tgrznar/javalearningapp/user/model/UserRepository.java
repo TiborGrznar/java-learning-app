@@ -26,6 +26,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** Used at startup to decide whether the first administrator has to be created. */
     boolean existsByRole(UserRole role);
 
+    /**
+     * Role and active flag of a user, read by the security filter on every authenticated request. It selects two
+     * columns and no entity, so it loads neither the school nor the class.
+     */
+    @Query("select new com.tgrznar.javalearningapp.user.model.UserAccess(u.role, u.active) from User u where u.id = :id")
+    Optional<UserAccess> findAccessById(@Param("id") Long id);
+
     /** Used to protect the last active administrator. */
     long countByRoleAndActive(UserRole role, boolean active);
 
