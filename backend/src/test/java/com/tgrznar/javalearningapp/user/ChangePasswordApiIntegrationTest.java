@@ -247,7 +247,7 @@ class ChangePasswordApiIntegrationTest {
     }
 
     @Test
-    void changePassword_deactivatedAccountWithAStillValidToken_returns403() throws Exception {
+    void changePassword_deactivatedAccountWithAStillValidToken_returns401() throws Exception {
         User user = savedUser(UserRole.STUDENT);
         String token = jwtService.generateAccessToken(user);
         user.setActive(false);
@@ -257,8 +257,8 @@ class ChangePasswordApiIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(CURRENT, NEW, NEW)))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("ACCOUNT_DISABLED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 
         flushAndClear();
         assertThat(passwordEncoder.matches(CURRENT, hashOf(user))).isTrue();
@@ -276,7 +276,7 @@ class ChangePasswordApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(CURRENT, NEW, NEW)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_TOKEN"));
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
     // ---------- helpers ----------

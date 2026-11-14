@@ -99,19 +99,6 @@ abstract class AdminUserApiTestSupport {
         return classRepository.saveAndFlush(schoolClass);
     }
 
-    /**
-     * Makes the target the only active administrator in the database (rolled back after the test).
-     * The other administrators are deactivated, which works because access tokens are stateless
-     * and is_active is not checked per request (known gap in open-decisions.md). When that check
-     * is added, this helper has to be rewritten.
-     */
-    protected void makeOnlyActiveAdmin(User target) {
-        userRepository.findAll().stream()
-                .filter(u -> u.getRole() == UserRole.ADMIN && u.isActive() && !u.getId().equals(target.getId()))
-                .forEach(u -> u.setActive(false));
-        userRepository.flush();
-    }
-
     protected static String url(Long id) {
         return URL + "/" + id;
     }

@@ -38,14 +38,14 @@ class TeacherStudentOverviewApiTest extends TeacherStudentApiTestSupport {
     }
 
     @Test
-    void overview_deactivatedTeacherWithAStillValidToken_isDenied() throws Exception {
+    void overview_deactivatedTeacherWithAStillValidToken_returns401() throws Exception {
         String token = jwtService.generateAccessToken(teacher);
         teacher.setActive(false);
         userRepository.saveAndFlush(teacher);
 
         mockMvc.perform(get(URL).header("Authorization", "Bearer " + token))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
     @Test

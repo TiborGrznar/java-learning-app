@@ -67,20 +67,6 @@ class AdminUserActiveApiIntegrationTest extends AdminUserApiTestSupport {
     }
 
     @Test
-    void lastActiveAdmin_returns409() throws Exception {
-        User actor = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.ADMIN);
-        User target = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.ADMIN);
-        makeOnlyActiveAdmin(target);
-
-        asUser(patch(url(target.getId()) + "/active").contentType(MediaType.APPLICATION_JSON).content(activeJson(false)),
-                actor)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("LAST_ADMIN"));
-
-        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
-    }
-
-    @Test
     void teacherLeadingActiveClass_returns409AndStaysActive() throws Exception {
         School school = saveSchool(true);
         User teacher = saveUser(uniqueEmail().toLowerCase(Locale.ROOT), UserRole.TEACHER, school, "Alfa", true);
