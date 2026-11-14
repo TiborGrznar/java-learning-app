@@ -103,16 +103,17 @@ class UserApiIntegrationTest {
     }
 
     @Test
-    void me_withDeactivatedAccount_returns403() throws Exception {
+    void me_withDeactivatedAccount_returns401() throws Exception {
+        // The security filter checks the account on every request, so the service is never reached.
         User user = saveUser(UserRole.STUDENT, null, false);
 
         mockMvc.perform(get(ME_URL).header("Authorization", bearer(user)))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("ACCOUNT_DISABLED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
     @Test
-    void me_whenUserNoLongerExists_returns401InvalidToken() throws Exception {
+    void me_whenUserNoLongerExists_returns401() throws Exception {
         User user = saveUser(UserRole.STUDENT, null, true);
         String token = bearer(user);
         userRepository.delete(user);
@@ -120,7 +121,7 @@ class UserApiIntegrationTest {
 
         mockMvc.perform(get(ME_URL).header("Authorization", token))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_TOKEN"));
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
     // ---------- helpers ----------

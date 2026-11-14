@@ -297,7 +297,11 @@ public class AdminUserService {
         return school;
     }
 
-    /** Called for an active administrator that is about to stop being one: at least one other must remain. */
+    /**
+     * Called for an active administrator that is about to stop being one: at least one other must remain.
+     * The security filter lets only active users in, so the caller is an active administrator too and a request
+     * cannot reach this limit in a normal way; it stays as the last line of defence against a race of two requests.
+     */
     private void ensureAnotherActiveAdminExists() {
         if (userRepository.countByRoleAndActive(UserRole.ADMIN, true) <= 1) {
             throw new LastAdminException();

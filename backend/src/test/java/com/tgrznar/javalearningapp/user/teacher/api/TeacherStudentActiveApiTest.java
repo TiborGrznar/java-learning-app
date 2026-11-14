@@ -58,15 +58,15 @@ class TeacherStudentActiveApiTest extends TeacherStudentApiTestSupport {
     }
 
     @Test
-    void setActive_deactivatedTeacherWithAStillValidToken_isDeniedAndChangesNothing() throws Exception {
+    void setActive_deactivatedTeacherWithAStillValidToken_returns401AndChangesNothing() throws Exception {
         User student = saveStudent(ownClass);
         String token = jwtService.generateAccessToken(teacher);
         teacher.setActive(false);
         userRepository.saveAndFlush(teacher);
 
         mockMvc.perform(request(List.of(student.getId()), false).header("Authorization", "Bearer " + token))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 
         flushAndClear();
         assertThat(reload(student).isActive()).isTrue();

@@ -73,10 +73,9 @@ import java.util.Map;
  * INVALID_QUIZ_TOKEN             400     quiz token is not valid for this student and module, reload the quiz
  * INVALID_CREDENTIALS            401     wrong e-mail or password (indistinguishable on purpose)
  * INVALID_REFRESH_TOKEN          401     session expired, drop tokens and redirect to login
- * INVALID_TOKEN                  401     access token refers to a missing user, drop tokens, redirect to login
- * UNAUTHENTICATED                401     access token missing, invalid or expired, try /refresh once, then redirect to login
- * ACCOUNT_DISABLED               403     account deactivated, show a message, no retry
- * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
+ * INVALID_TOKEN                  401     access token refers to a missing user (rare, the user was deleted during the request), drop tokens, redirect to login
+ * UNAUTHENTICATED                401     access token missing, invalid or expired, or its user is deactivated or deleted, try /refresh once, then redirect to login
+ * ACCOUNT_DISABLED               403     account deactivated (login and refresh only), show a message, no retry * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
  * MODULE_LOCKED                  403     module is locked until the previous module's quiz is passed, show it as locked, no retry
  * NOT_ENROLLED                   403     the student has not joined a class yet, send them to the join code form (POST /api/v1/enrollments)
  * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message

@@ -192,10 +192,11 @@ class AdminUserDeleteApiTest extends AdminUserApiTestSupport {
         as(deleteRequest(student), UserRole.ADMIN)
                 .andExpect(status().isNoContent());
 
-        // The access token itself is stateless and still valid, but the class is read from the database.
+        // The access token itself is still valid, but the security filter reads the user from the database on
+        // every request, and the user no longer exists.
         asUser(get("/api/v1/learning/modules"), student)
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("NOT_ENROLLED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
     // ---------- helpers ----------

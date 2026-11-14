@@ -114,8 +114,10 @@ Rules of user management: an administrator cannot change their own role, deactiv
 **Passwords.** A password has at least 8 characters and at most 72 bytes (BCrypt ignores the rest; a character with diacritics takes more than one byte), the check is the same for registration and password change.
 - *Change* (`PUT /users/me/password`): the current password is verified, the new one has to differ from it (`400 PASSWORD_UNCHANGED`) and has to match its confirmation (`400 PASSWORD_MISMATCH`). A wrong current password answers `400 INVALID_CURRENT_PASSWORD` (not 401, so a client does not take it for an expired session), 5 wrong attempts per user within 15 minutes answer `429 RATE_LIMITED`, and a successful change clears the counter. The user is loaded from the database, so a deactivated or deleted account is refused even with a still valid access token (`403 ACCOUNT_DISABLED`, `401 INVALID_TOKEN`).
 - *Reset* (`POST /users/{id}/password-reset`): an administrator hands the temporary password over to the user. The failed-login and failed-password-change counters of that user are cleared, so a locked-out user can sign in with the temporary password at once. There is no e-mail reset, no forced change of the temporary password and a teacher cannot reset the password of a student.
-- Both operations revoke all refresh tokens of the user. An access token that was already issued stays valid until it expires (15 minutes), because `is_active` and the password are not checked per request.
-  Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
+- Both operations revoke all refresh tokens of the user. An access token that was issued before the change stays valid until it expires (15 minutes), because the password is not part of the per-request check (see below).
+  **Access check on every request.** The access token proves only who the caller is. The security filter reads the current role and the active flag of that user from the database on every authenticated request (one query by primary key, two columns). A deactivated or deleted user with a still valid token gets `401 UNAUTHENTICATED` at once, and a demoted or promoted user has the new role at once. The role claim in the token is not used for authorization. A client handles the `401` as before: it tries `/auth/refresh` once, which fails because deactivation revoked the refresh tokens, and sends the user to the login, which answers `403 ACCOUNT_DISABLED`.
+
+Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
 
 Rules of classes and enrollment:
 
@@ -154,9 +156,9 @@ Rules of classes and enrollment:
 | 413 | `PAYLOAD_TOO_LARGE` | The request body exceeds the allowed size, a client bug |
 | 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
 | 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired, revoked or already used. Also returned after the account was deactivated, because deactivation revokes all its refresh tokens |
-| 401 | `INVALID_TOKEN` | The access token is valid, but its user no longer exists |
-| 401 | `UNAUTHENTICATED` | No access token was sent, or it is invalid or expired |
-| 403 | `ACCOUNT_DISABLED` | The account is deactivated |
+| 401 | `INVALID_TOKEN` | The access token is valid, but its user no longer exists (rare: the user was deleted between the check in the security filter and the call of the service) |
+| 401 | `UNAUTHENTICATED` | No access token was sent, or it is invalid or expired, or its user is deactivated or no longer exists |
+| 403 | `ACCOUNT_DISABLED` | The account is deactivated (answered by the login and the token refresh; an access token of a deactivated user gets `401 UNAUTHENTICATED`) |
 | 403 | `ACCESS_DENIED` | The role of the user does not allow the operation |
 | 403 | `MODULE_LOCKED` | The quiz of the previous module has not been passed yet |
 | 403 | `NOT_ENROLLED` | The student has not joined a class yet |

@@ -1,5 +1,6 @@
 package com.tgrznar.javalearningapp.auth.security;
 
+import com.tgrznar.javalearningapp.user.model.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -26,6 +27,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtService jwtService,
+                                                   UserRepository userRepository,
                                                    JsonAuthenticationEntryPoint authenticationEntryPoint,
                                                    JsonAccessDeniedHandler accessDeniedHandler) throws Exception {
         http
@@ -49,7 +51,8 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
-                .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtAuthenticationFilter(jwtService, userRepository),
+                        UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
