@@ -1,5 +1,6 @@
 package com.tgrznar.javalearningapp.schoolclass;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -51,7 +52,7 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Long> 
               and (:active is null or c.active = :active)
             order by c.name, c.id
             """)
-    List<SchoolClass> search(@Param("schoolId") Long schoolId,
-                             @Param("teacherId") Long teacherId,
-                             @Param("active") Boolean active);
+    List<SchoolClass> search(@Param("schoolId") @Nullable Long schoolId,
+                             @Param("teacherId") @Nullable Long teacherId,
+                             @Param("active") @Nullable Boolean active);
 }

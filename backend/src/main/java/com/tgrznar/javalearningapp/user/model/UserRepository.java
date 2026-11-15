@@ -1,6 +1,7 @@
 package com.tgrznar.javalearningapp.user.model;
 
 import jakarta.persistence.LockModeType;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -52,9 +53,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
               and (:role is null or u.role = :role)
               and (:active is null or u.active = :active)
             """)
-    Page<User> search(@Param("schoolId") Long schoolId,
-                      @Param("role") UserRole role,
-                      @Param("active") Boolean active,
+    Page<User> search(@Param("schoolId") @Nullable Long schoolId,
+                      @Param("role") @Nullable UserRole role,
+                      @Param("active") @Nullable Boolean active,
                       Pageable pageable);
 
     /**
@@ -83,8 +84,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Page<User> findTeacherStudents(@Param("teacherId") Long teacherId,
                                    @Param("schoolId") Long schoolId,
                                    @Param("role") UserRole role,
-                                   @Param("classId") Long classId,
-                                   @Param("active") Boolean active,
+                                   @Param("classId") @Nullable Long classId,
+                                   @Param("active") @Nullable Boolean active,
                                    Pageable pageable);
 
     /**
