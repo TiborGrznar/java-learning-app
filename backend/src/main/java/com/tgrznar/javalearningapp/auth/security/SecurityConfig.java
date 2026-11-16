@@ -1,6 +1,7 @@
 package com.tgrznar.javalearningapp.auth.security;
 
 import com.tgrznar.javalearningapp.user.model.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -29,24 +30,39 @@ public class SecurityConfig {
                                                    JwtService jwtService,
                                                    UserRepository userRepository,
                                                    JsonAuthenticationEntryPoint authenticationEntryPoint,
-                                                   JsonAccessDeniedHandler accessDeniedHandler) throws Exception {
+                                                   JsonAccessDeniedHandler accessDeniedHandler,
+                                                   @Value("${springdoc.api-docs.enabled:false}") boolean apiDocsEnabled)
+            throws Exception {
         http
                 // Stateless API authenticated by a bearer token, no cookies or sessions,
                 // so there is nothing for CSRF to protect.
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        // Public endpoints are listed one by one on purpose. A wildcard under /auth/ would
-                        // silently expose any endpoint added there later (a password change, a profile...).
-                        // A new public endpoint must be added here and covered by AuthPathsSecurityIntegrationTest.
-                        .requestMatchers(HttpMethod.POST,
-                                "/api/v1/auth/register",
-                                "/api/v1/auth/login",
-                                "/api/v1/auth/refresh",
-                                "/api/v1/auth/logout").permitAll()
-                        // Error dispatches must stay open, otherwise validation errors turn into 401.
-                        .requestMatchers("/error").permitAll()
-                        .anyRequest().authenticated())
+                .authorizeHttpRequests(auth -> {
+                    // Public endpoints are listed one by one on purpose. A wildcard under /auth/ would
+                    // silently expose any endpoint added there later (a password change, a profile...).
+                    // A new public endpoint must be added here and covered by AuthPathsSecurityIntegrationTest
+                    // (and listed in PUBLIC_PATHS of OpenApiConfig).
+                    auth.requestMatchers(HttpMethod.POST,
+                            "/api/v1/auth/register",
+                            "/api/v1/auth/login",
+                            "/api/v1/auth/refresh",
+                            "/api/v1/auth/logout").permitAll();
+                    // The OpenAPI description and Swagger UI are open only while they are switched on
+                    // (API_DOCS_ENABLED=true, meant for local development). Switched off, these paths need
+                    // a token like everything else.
+                    if (apiDocsEnabled) {
+                        auth.requestMatchers(HttpMethod.GET,
+                                "/v3/api-docs",
+                                "/v3/api-docs.yaml",
+                                "/v3/api-docs/**",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**").permitAll();
+                    }
+                    // Error dispatches must stay open, otherwise validation errors turn into 401.
+                    auth.requestMatchers("/error").permitAll();
+                    auth.anyRequest().authenticated();
+                })
                 // 401 (no usable token) and 403 (wrong role) both answer with the uniform JSON error body.
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
