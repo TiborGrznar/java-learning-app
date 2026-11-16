@@ -1,10 +1,15 @@
 # Image for running untrusted student code. Contains a JDK and the launcher, nothing else:
 # no secrets, no application code, no package manager hooks. Built once, started per submission.
 #
-# The tag is a floating minor tag for the spike. Before the demo is considered done, pin it to a digest:
+# The base image is pinned to a digest: the tag (25-jdk-noble) is only there for people to read, the
+# digest decides which image is really used, so a re-published tag cannot change the sandbox
+# silently. Dependabot (docker ecosystem, /runner/sandbox) proposes new digests; read such a PR
+# as "a new build of the same Java 25 image" and run the sandbox tests before merging.
+# To update by hand:
 #   docker pull eclipse-temurin:25-jdk-noble
-#   docker inspect --format "{{index .RepoDigests 0}}" eclipse-temurin:25-jdk-noble
-FROM eclipse-temurin:25-jdk-noble
+#   docker buildx imagetools inspect eclipse-temurin:25-jdk-noble
+# and copy the "Digest:" line (the digest of the manifest list, not of one platform).
+FROM eclipse-temurin:25-jdk-noble@sha256:80f67fb3d6f76e2d817d98a4cc2a9cf05f054d4e6adc5e2144bde671d722e63f
 
 # Two unprivileged uids, used by the launcher through setpriv (see launcher.sh):
 #   10002 runs the student's program, 10003 runs the compiler and owns /build.
