@@ -23,6 +23,7 @@ Work in progress.
 | Student: progress overview | Done        |
 | Sandboxed execution of student code | Done           |
 | Password change (own) and password reset by an administrator | Done |
+| Preparation for the frontend: opt-in CORS, OpenAPI description and Swagger UI | Done |
 | Frontend (React + TypeScript) | Not started |
 
 ## API
@@ -108,16 +109,14 @@ Rules of submissions:
 - A visible case that fails shows the message of the runner (for an exception the type, the text and the line, e.g. `ArrayIndexOutOfBoundsException: Index 5 out of bounds for length 3`) and, for a wrong answer, what the program printed. A hidden case shows only its number and verdict; after an exception it adds the type and the line in the student's own file (`Výnimka NullPointerException (Solution.java, riadok 4)`) when the type is a well-known JDK exception, and never the text of the exception, because that could carry the hidden input.
 - Every submission with a verdict is stored as a result (the history stays). The coding part of a module is completed when the student has a passed result for every currently active task of the module, and it stays completed afterwards.
   Comparison of the output (for task authors): line endings `\r\n` and `\n` are the same, spaces at the end of a line (not tabs) and blank lines at the end are ignored, everything else must match exactly: letter case, spaces inside and at the start of a line, blank lines in the middle, and numbers character by character (`3.0` is not `3`).
-
-Rules of user management: an administrator cannot change their own role, deactivate themselves or reset their own password, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them.
+  Rules of user management: an administrator cannot change their own role, deactivate themselves or reset their own password, and the last active administrator cannot be demoted or deactivated. Students register themselves, administrators never create them.
 
 **Passwords.** A password has at least 8 characters and at most 72 bytes (BCrypt ignores the rest; a character with diacritics takes more than one byte), the check is the same for registration and password change.
 - *Change* (`PUT /users/me/password`): the current password is verified, the new one has to differ from it (`400 PASSWORD_UNCHANGED`) and has to match its confirmation (`400 PASSWORD_MISMATCH`). A wrong current password answers `400 INVALID_CURRENT_PASSWORD` (not 401, so a client does not take it for an expired session), 5 wrong attempts per user within 15 minutes answer `429 RATE_LIMITED`, and a successful change clears the counter. The user is loaded from the database, so a deactivated or deleted account is refused even with a still valid access token (`403 ACCOUNT_DISABLED`, `401 INVALID_TOKEN`).
 - *Reset* (`POST /users/{id}/password-reset`): an administrator hands the temporary password over to the user. The failed-login and failed-password-change counters of that user are cleared, so a locked-out user can sign in with the temporary password at once. There is no e-mail reset, no forced change of the temporary password and a teacher cannot reset the password of a student.
 - Both operations revoke all refresh tokens of the user. An access token that was issued before the change stays valid until it expires (15 minutes), because the password is not part of the per-request check (see below).
   **Access check on every request.** The access token proves only who the caller is. The security filter reads the current role and the active flag of that user from the database on every authenticated request (one query by primary key, two columns). A deactivated or deleted user with a still valid token gets `401 UNAUTHENTICATED` at once, and a demoted or promoted user has the new role at once. The role claim in the token is not used for authorization. A client handles the `401` as before: it tries `/auth/refresh` once, which fails because deactivation revoked the refresh tokens, and sends the user to the login, which answers `403 ACCOUNT_DISABLED`.
-
-Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
+  Deactivation and deletion of a student are different on purpose. **Deactivation** pauses the account (a postponed or repeated year): the student keeps their progress and the administrator can reactivate the account. **Deletion** is for a student who leaves the school: the account, progress, quiz results, coding results and tokens are removed for good and the e-mail can be registered again. A teacher who leads an active class cannot be deactivated, demoted or moved to another school, the administrator has to reassign or deactivate the class first.
 
 Rules of classes and enrollment:
 
@@ -128,7 +127,6 @@ Rules of classes and enrollment:
 - A student who has not joined a class gets `403 NOT_ENROLLED` on everything under `/learning/**`. Teachers and administrators get `403 ACCESS_DENIED` there.
 - A module is unlocked when it is the first active one, when the student passed the quiz of the previous active module, or when the student already has progress in it.
   Rules of the teacher's student overview and bulk change:
-
 - A teacher sees and changes only the students of **their own classes** (`classes.teacher_id`) that belong to **the teacher's current school**. The school condition matters when a teacher who still leads only deactivated classes is moved to another school: the old classes then show nobody. A teacher without a class gets an empty page, a teacher without a school (or an inactive one) gets `403 ACCESS_DENIED`. The teacher is read from the database on every call, so a still valid access token does not help after a deactivation or a change of role.
 - A student outside this scope, a teacher, an administrator and an unknown id are indistinguishable: all answer `404 USER_NOT_FOUND` (`404 CLASS_NOT_FOUND` for a class filter), never `403`, so nothing about other accounts is revealed. The message does not say which id of a bulk request was refused.
 - Deactivated students and students of deactivated classes stay in the list (`active`, `classActive`), so they can be reactivated.
@@ -136,7 +134,6 @@ Rules of classes and enrollment:
 - The bulk change has no partial success. Repeated ids count once. A student who is already in the requested state is not an error, he is listed in `unchanged`. Two changes of the same students at the same time are decided one after another (the rows are locked), so every student is reported as changed once. Reactivation does not bring refresh tokens back, the student signs in again.
 - There is no separate archive: "archiving" a student means deactivating the account, the progress stays. Deactivating a class and deleting a student stay with administrators.
   Errors use a uniform JSON body. `code` is a stable identifier for client logic, `message` is a Slovak text for the user, `fieldErrors` is present only for validation errors:
-
 ```json
 {
   "code": "VALIDATION_ERROR",
@@ -216,7 +213,31 @@ All values are configurable under `app.rate-limit.*`. A limit answers `429 RATE_
 
 **Body size.** Request bodies under `/api/` are limited to 16 KiB, and to 1 MiB under the prefixes in `app.rate-limit.large-body-prefixes` (module theory, coding tasks and test cases). Larger bodies get `413 PAYLOAD_TOO_LARGE`, including bodies sent without a `Content-Length`. A student's code goes under `/api/v1/learning`, which has the default limit, so it is capped at 12000 characters.
 
+CORS preflight requests (`OPTIONS`) do not count towards any limit, and a `429` answer carries the CORS headers, so a browser client can read `Retry-After` (the header is exposed).
+
 Known trade-offs: anyone who knows an e-mail can block logins to it for the length of the window (only failures count and a successful login clears the counter, so the block is short). A school behind one public address shares the registration and general limits, raise them in the configuration if needed.
+
+## CORS and the frontend
+
+CORS is **off by default**: with no origin configured the API sends no CORS headers and browsers block cross-origin calls. This is the right setting when the frontend and the API share one origin (a reverse proxy in production, the Vite dev server proxy in development).
+
+To allow a frontend on another origin, set `CORS_ALLOWED_ORIGINS` (comma separated, for example `http://localhost:5173`). Rules:
+
+- Only exact origins are accepted: `scheme://host[:port]`, no wildcard, path, query or user info. A wrong value stops the application at startup.
+- Applies to `/api/**` only, methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, request headers `Authorization` and `Content-Type`, preflight cached for `app.cors.max-age` (default 1 hour).
+- No credentials (cookies) are allowed yet. The tokens travel in the `Authorization` header.
+- The filter runs before the body size and rate limit filters and before Spring Security, so `401`, `413` and `429` answers also carry the CORS headers and the browser can show the error.
+- A request from an origin that is not allowed gets `403` with the plain text `Invalid CORS request`, not the JSON error body.
+## OpenAPI description and Swagger UI
+
+The API is described by springdoc-openapi, **off by default**. Set `API_DOCS_ENABLED=true` to turn it on:
+
+| Address | Content |
+|---------|---------|
+| `/v3/api-docs` and `/v3/api-docs.yaml` | the OpenAPI description (JSON, YAML) |
+| `/swagger-ui.html` | Swagger UI, use **Authorize** and paste an access token from `POST /auth/login` |
+
+While it is on, these addresses are public (no token needed), so turn it on in development only. The default `dev` profile does not turn it on, the variable decides. The description lists the bearer scheme, marks the four public `/auth` endpoints as not requiring a token and adds the `ErrorResponse` body for `401`, `403`, `429` and `500`.
 
 ## Code runner (sandbox)
 
@@ -326,19 +347,17 @@ Docker Desktop is enough for development. In production run Docker rootless or u
 
 ## Tech stack
 
-- **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, Lombok, Maven
+- **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, springdoc-openapi, Lombok, Maven
 - **Database:** MySQL 8.4 LTS (Docker for local development), Flyway migrations
 - **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
 - **Code runner:** a separate Spring Boot service (`runner/`) that runs student code in disposable Docker containers
   Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
-
 ## Prerequisites
 
 - JDK 25
 - Docker (for the local MySQL container, for the tests, which start their own MySQL container, and for the code runner)
 - Git
   Maven is not required, the repository contains the Maven Wrapper.
-
 ## Getting started
 
 ### 1. Configure environment variables
@@ -364,6 +383,8 @@ Fill in the values in `.env` (it is git-ignored and must never be committed):
 | `ADMIN_NAME` | Optional, first name of the first administrator (default `Admin`) |
 | `ADMIN_SURNAME` | Optional, surname of the first administrator (default `Administrátor`) |
 | `RATE_LIMIT_TRUSTED_PROXIES` | Optional, comma separated addresses of reverse proxies whose `X-Forwarded-For` header is believed (default empty: never) |
+| `CORS_ALLOWED_ORIGINS` | Optional, comma separated origins of a frontend served from another origin (default empty: CORS off). See [CORS and the frontend](#cors-and-the-frontend) |
+| `API_DOCS_ENABLED` | Optional, `true` turns on the OpenAPI description and Swagger UI, which are then public (default `false`). See [OpenAPI description and Swagger UI](#openapi-description-and-swagger-ui) |
 | `RUNNER_TOKEN` | Shared secret between the backend and the code runner, at least 32 characters. Both the backend and the runner refuse to start without it, there is no default. If your `.env` was created before the runner was added, add the line (compare it with `.env.example`) |
 | `RUNNER_BASE_URL` | Optional, where the backend finds the runner (default `http://127.0.0.1:8081`). Leave the line out or commented out, an empty value breaks the startup |
 | `RUNNER_PORT` | Optional, port of the runner (default `8081`) |
@@ -431,8 +452,7 @@ Only an administrator can create teachers and other administrators, so the first
 3. Log in with `POST /api/v1/auth/login`.
 4. Remove `ADMIN_PASSWORD` from the environment. The password is stored only as a hash, the variable is not needed any more.
    The application refuses to start when the configuration is unusable: only one of `ADMIN_EMAIL` and `ADMIN_PASSWORD` is set, the e-mail is malformed, the password has fewer than 12 characters or more than 72 bytes (characters with diacritics take more than one byte), or an account with that e-mail already exists.
-
-**Recovery.** A forgotten password of an administrator can be reset by another administrator (`POST /users/{id}/password-reset`). If no administrator can log in at all, delete the administrator in the database and start the application again with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set:
+   **Recovery.** A forgotten password of an administrator can be reset by another administrator (`POST /users/{id}/password-reset`). If no administrator can log in at all, delete the administrator in the database and start the application again with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set:
 
 ```sql
 DELETE FROM users WHERE role = 'admin';
@@ -456,7 +476,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       │   │   │   └── token/        refresh token entity, repository and service
 │       │   │   ├── codingtask/   coding tasks and test cases (admin/ holds their management)
 │       │   │   ├── coderunner/   client of the code runner service (HTTP, answer checks)
-│       │   │   ├── common/       global exception handler, error body, page response, MVC configuration
+│       │   │   ├── common/       global exception handler, error body, page response, MVC configuration, CORS filter, OpenAPI configuration
 │       │   │   ├── ratelimit/    sliding-window limiter, per-IP filter, body size filter, client IP resolution
 │       │   │   ├── user/
 │       │   │   │   ├── model/        user entity, role, repository
@@ -508,8 +528,7 @@ What is checked:
 - Dependencies are injected through constructors, never through `@Autowired` fields or setters.
 - No class starts an operating system process (`ProcessBuilder`, `Runtime.exec`): user code never runs in the application JVM, only the separate runner starts processes.
 - No `System.out`, `System.err` or `java.util.logging`.
-
-A new exception to a rule needs a written reason next to it. Not checked: cycles between feature packages (they exist today, the feature packages and `common` depend on each other), Lombok annotations such as `@Data` (they are not kept in the bytecode) and `@Transactional(readOnly = true)` on services that map lazy associations (code review).
+  A new exception to a rule needs a written reason next to it. Not checked: cycles between feature packages (they exist today, the feature packages and `common` depend on each other), Lombok annotations such as `@Data` (they are not kept in the bytecode) and `@Transactional(readOnly = true)` on services that map lazy associations (code review).
 
 Every package has a `package-info.java` with [JSpecify](https://jspecify.org/) `@NullMarked`: a type is non-null unless it is marked `@Nullable`. A new package needs its own `package-info.java`. The annotations serve the IDE and the reader, there is no compile-time null checker. Spring Data checks them at run time, though: a parameter of a repository method that may be `null` (an optional filter such as `:schoolId is null or ...`) must be marked `@Nullable`, otherwise the call fails with an `IllegalArgumentException`.
 
