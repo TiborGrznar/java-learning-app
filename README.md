@@ -487,6 +487,26 @@ Never put the real administrator password into shell commands or tools such as P
 
 Tests lie in the package of the tested class (they need package-private access in some cases). The API integration tests of a feature are in an `api` subpackage, one class per operation, with a shared abstract test support class.
 
+## Architecture rules and nullability
+
+The tests in `backend/src/test/java/com/tgrznar/javalearningapp/architecture/` use [ArchUnit](https://www.archunit.org/) to check the compiled production classes on every test run (locally and in CI). They do not lie in the package of a tested class, because they check the whole application. A rule that fails means the code broke an agreed convention, not that a feature is wrong.
+
+What is checked:
+
+- Controllers are not called by any other class.
+- Repositories are used only by `@Service` classes and by four documented exceptions: `JwtAuthenticationFilter` and `SecurityConfig` (the role and the active flag are read on every request), `EnrollmentGateInterceptor` and `JoinCodeGenerator`. The reason of each is in `LayerArchitectureTest`.
+- Classes in `dto` packages are records or enums.
+- `@Transactional` appears only in services.
+- Public controller methods do not take or return JPA entities, also not inside a generic type.
+- Every endpoint has `@PreAuthorize`, on the controller or on the method. The exceptions are `AuthController` (public endpoints, listed one by one in `SecurityConfig`) and `UserController` (the signed-in user's own profile and password, open to every role).
+- Dependencies are injected through constructors, never through `@Autowired` fields or setters.
+- No class starts an operating system process (`ProcessBuilder`, `Runtime.exec`): user code never runs in the application JVM, only the separate runner starts processes.
+- No `System.out`, `System.err` or `java.util.logging`.
+
+A new exception to a rule needs a written reason next to it. Not checked: cycles between feature packages (they exist today, the feature packages and `common` depend on each other), Lombok annotations such as `@Data` (they are not kept in the bytecode) and `@Transactional(readOnly = true)` on services that map lazy associations (code review).
+
+Every package has a `package-info.java` with [JSpecify](https://jspecify.org/) `@NullMarked`: a type is non-null unless it is marked `@Nullable`. A new package needs its own `package-info.java`. The annotations serve the IDE and the reader, there is no compile-time null checker. Spring Data checks them at run time, though: a parameter of a repository method that may be `null` (an optional filter such as `:schoolId is null or ...`) must be marked `@Nullable`, otherwise the call fails with an `IllegalArgumentException`.
+
 ## Database migrations
 
 Schema changes are managed by Flyway. An applied migration is never edited, every change is a new versioned file (`V8__...sql`). Foreign keys use `ON DELETE RESTRICT`, records with dependent data are soft-deleted through the `is_active` flag. Two exceptions use `ON DELETE CASCADE`: `refresh_tokens` (session data, V2) and the learning data of a student (`user_progress`, `quiz_results`, `coding_results`, V5), so that deleting a student removes it. A new table that holds a student's data must follow the same rule.
