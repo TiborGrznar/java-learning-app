@@ -322,7 +322,7 @@ The unit tests need no Docker. `DockerSandboxIntegrationTest` and `SandboxAttack
 
 ### Before production
 
-Docker Desktop is enough for development. In production run Docker rootless or use gVisor, pin the image to a digest, and keep the Docker socket reachable only by the runner process: access to it is equivalent to root on the host.
+Docker Desktop is enough for development. In production run Docker rootless or use gVisor and keep the Docker socket reachable only by the runner process: access to it is equivalent to root on the host. The base image in `runner/sandbox/Dockerfile` is already pinned to a digest (the tag is only for reading); Dependabot proposes new digests, see "Continuous integration".
 
 ## Tech stack
 
@@ -415,6 +415,12 @@ The tests need a running Docker, nothing else: no database container from step 2
 ## Continuous integration
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push to any branch, on pull requests to `main` and on demand. Three jobs run in parallel: `backend` (build and all tests, the integration tests start their own MySQL container with Testcontainers and use the test-only configuration from `src/test/resources`, so no database service and no secrets are needed), `runner` (build and unit tests) and `sandbox` (builds the sandbox image and runs the tests that start real containers; it fails if any of them was skipped). Docker is preinstalled on the runner. A newer run of the same branch or pull request cancels the older one, runs on `main` are never cancelled.
+
+The `sandbox` job also lints `runner/sandbox/Dockerfile` with Hadolint before building it (warnings and errors fail the job, style hints do not).
+
+**Supply chain.** Every GitHub Action in `.github/workflows/` is pinned to a full commit SHA with the version in a trailing comment (`uses: actions/checkout@<sha> # v7.0.1`), because a tag can be moved to other code later and a SHA cannot. The sandbox base image is pinned to a digest in the same way (`FROM eclipse-temurin:25-jdk-noble@sha256:...`). Dependabot (`.github/dependabot.yml`) checks weekly: Maven in `/backend` and `/runner`, GitHub Actions (it updates the SHA and the comment together), `docker-compose.yml` and the sandbox `Dockerfile`. Minor and patch updates of one ecosystem come in one pull request. New major versions of MySQL and of Java (`eclipse-temurin`) are ignored on purpose: they are project decisions.
+
+To pin a new action by hand, take the commit of the release tag, for example `git ls-remote --tags https://github.com/<owner>/<action>.git "<tag>*"`; for an annotated tag use the line ending in `^{}`, which is the commit.
 
 ## First administrator
 
