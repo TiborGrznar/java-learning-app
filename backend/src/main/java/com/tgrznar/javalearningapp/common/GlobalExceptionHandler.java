@@ -73,7 +73,7 @@ import java.util.Map;
  * PASSWORD_UNCHANGED             400     the new password equals the current one, show it at the field
  * INVALID_QUIZ_TOKEN             400     quiz token is not valid for this student and module, reload the quiz
  * INVALID_CREDENTIALS            401     wrong e-mail or password (indistinguishable on purpose)
- * INVALID_REFRESH_TOKEN          401     session expired, drop tokens and redirect to login
+ * INVALID_REFRESH_TOKEN          401     the refresh cookie is missing, unknown, expired or already used (also the normal answer to a visitor who is not logged in), show the login page, no error message
  * INVALID_TOKEN                  401     access token refers to a missing user (rare, the user was deleted during the request), drop tokens, redirect to login
  * UNAUTHENTICATED                401     access token missing, invalid or expired, or its user is deactivated or deleted, try /refresh once, then redirect to login
  * ACCOUNT_DISABLED               403     account deactivated (login and refresh only), show a message, no retry
@@ -195,7 +195,7 @@ public class GlobalExceptionHandler {
         return ErrorResponse.of("INVALID_CREDENTIALS", ex.getMessage());
     }
 
-    /** 401 INVALID_REFRESH_TOKEN: refresh token is unknown, expired or already used. */
+    /** 401 INVALID_REFRESH_TOKEN: the refresh token cookie is missing, unknown, expired or already used. */
     @ExceptionHandler(InvalidRefreshTokenException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ErrorResponse handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
