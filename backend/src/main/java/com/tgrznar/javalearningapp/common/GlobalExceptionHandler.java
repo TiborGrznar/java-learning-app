@@ -6,6 +6,7 @@ import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCurrentPasswordException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
+import com.tgrznar.javalearningapp.auth.exception.OriginNotAllowedException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordUnchangedException;
 import com.tgrznar.javalearningapp.coderunner.CodeRunnerBusyException;
@@ -75,7 +76,9 @@ import java.util.Map;
  * INVALID_REFRESH_TOKEN          401     session expired, drop tokens and redirect to login
  * INVALID_TOKEN                  401     access token refers to a missing user (rare, the user was deleted during the request), drop tokens, redirect to login
  * UNAUTHENTICATED                401     access token missing, invalid or expired, or its user is deactivated or deleted, try /refresh once, then redirect to login
- * ACCOUNT_DISABLED               403     account deactivated (login and refresh only), show a message, no retry * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
+ * ACCOUNT_DISABLED               403     account deactivated (login and refresh only), show a message, no retry
+ * ACCESS_DENIED                  403     logged in but lacking the role, show a message, keep the tokens
+ * ORIGIN_NOT_ALLOWED             403     login, refresh or logout came from a page whose Origin is not trusted (AUTH_ALLOWED_ORIGINS / CORS_ALLOWED_ORIGINS), a client or configuration bug, not shown to the user
  * MODULE_LOCKED                  403     module is locked until the previous module's quiz is passed, show it as locked, no retry
  * NOT_ENROLLED                   403     the student has not joined a class yet, send them to the join code form (POST /api/v1/enrollments)
  * SCHOOL_NOT_FOUND               404     school with the given id does not exist, show a message
@@ -343,6 +346,13 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleSubmissionInProgress() {
         return ErrorResponse.of("SUBMISSION_IN_PROGRESS",
                 "Vaše predchádzajúce riešenie sa ešte vyhodnocuje. Počkajte na výsledok");
+    }
+
+    /** 403 ORIGIN_NOT_ALLOWED: the refresh cookie endpoints were called from a page whose Origin is not trusted (CSRF defence). */
+    @ExceptionHandler(OriginNotAllowedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleOriginNotAllowed(OriginNotAllowedException ex) {
+        return ErrorResponse.of("ORIGIN_NOT_ALLOWED", ex.getMessage());
     }
 
     /** 403 MODULE_LOCKED: the student has not passed the quiz of the previous module yet. */

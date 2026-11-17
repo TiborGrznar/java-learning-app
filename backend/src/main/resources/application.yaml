@@ -41,7 +41,9 @@ app:
     # Per client IP, evaluated before authentication.
     login-per-ip: { max: 10, window: 15m }
     register-per-ip: { max: 5, window: 1h }
-    refresh-per-ip: { max: 30, window: 1m }
+    # Every page load of the frontend calls /refresh (the access token lives only in memory), so a school
+    # behind one address needs room for a whole class opening the app within a minute.
+    refresh-per-ip: { max: 120, window: 1m }
     # Every other request under /api/v1/. A school behind one address shares this budget.
     api-per-ip: { max: 600, window: 1m }
     # Failed logins per e-mail, whatever the IP.
@@ -66,6 +68,14 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
     # How long a browser may cache the answer to a preflight request.
     max-age: 1h
+  auth:
+    cookie:
+      # Secure attribute of the refresh token cookie. Keep true everywhere except local development over plain HTTP.
+      secure: ${REFRESH_COOKIE_SECURE:true}
+      # Origins of the frontend that may call login, refresh and logout (comma separated, exact, no wildcard,
+      # no path). The origins of app.cors.allowed-origins are trusted too. A request that carries any other
+      # Origin gets 403 ORIGIN_NOT_ALLOWED; with the list empty every request that carries an Origin is refused.
+      allowed-origins: ${AUTH_ALLOWED_ORIGINS:}
 springdoc:
   # The OpenAPI description (/v3/api-docs) and Swagger UI (/swagger-ui.html) are off unless API_DOCS_ENABLED=true.
   # Meant for local development: while on, they describe every endpoint and are open to anyone who can reach
