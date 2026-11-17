@@ -1,7 +1,7 @@
 package com.tgrznar.javalearningapp.user.admin.api;
 
-import com.jayway.jsonpath.JsonPath;
 import com.tgrznar.javalearningapp.school.School;
+import com.tgrznar.javalearningapp.testsupport.RefreshCookies;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import org.junit.jupiter.api.Test;
@@ -125,15 +125,14 @@ class AdminUserActiveApiIntegrationTest extends AdminUserApiTestSupport {
                         .content(loginJson(target.getEmail())))
                 .andExpect(status().isOk())
                 .andReturn();
-        String refreshToken = JsonPath.read(login.getResponse().getContentAsString(), "$.refreshToken");
+        String refreshToken = RefreshCookies.tokenFrom(login.getResponse());
 
         as(patch(url(target.getId()) + "/active").contentType(MediaType.APPLICATION_JSON).content(activeJson(false)),
                 UserRole.ADMIN)
                 .andExpect(status().isOk());
 
         // Deactivation revoked every refresh token of the user, so the token is simply no longer valid.
-        mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+        mockMvc.perform(post("/api/v1/auth/refresh").cookie(RefreshCookies.cookie(refreshToken)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
     }
@@ -148,13 +147,12 @@ class AdminUserActiveApiIntegrationTest extends AdminUserApiTestSupport {
                         .content(loginJson(target.getEmail())))
                 .andExpect(status().isOk())
                 .andReturn();
-        String refreshToken = JsonPath.read(login.getResponse().getContentAsString(), "$.refreshToken");
+        String refreshToken = RefreshCookies.tokenFrom(login.getResponse());
 
         target.setActive(false);
         userRepository.saveAndFlush(target);
 
-        mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+        mockMvc.perform(post("/api/v1/auth/refresh").cookie(RefreshCookies.cookie(refreshToken)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_DISABLED"));
     }

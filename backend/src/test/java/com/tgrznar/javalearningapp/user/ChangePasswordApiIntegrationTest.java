@@ -1,7 +1,7 @@
 package com.tgrznar.javalearningapp.user;
 
-import com.jayway.jsonpath.JsonPath;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
+import com.tgrznar.javalearningapp.testsupport.RefreshCookies;
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
 import com.tgrznar.javalearningapp.testsupport.TestUsers;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
@@ -92,7 +92,8 @@ class ChangePasswordApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.refreshToken").isNotEmpty())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(header().exists("Set-Cookie"))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"));
 
         flushAndClear();
@@ -112,10 +113,8 @@ class ChangePasswordApiIntegrationTest {
         String firstDevice = refreshTokenService.issue(user);
         String secondDevice = refreshTokenService.issue(user);
 
-        String response = change(user, body(CURRENT, NEW, NEW))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-        String newRefreshToken = JsonPath.read(response, "$.refreshToken");
+        String newRefreshToken = RefreshCookies.tokenFrom(change(user, body(CURRENT, NEW, NEW))
+                .andExpect(status().isOk()));
 
         // The bulk revoke bypasses the persistence context, so forget everything loaded before.
         flushAndClear();
@@ -304,11 +303,7 @@ class ChangePasswordApiIntegrationTest {
     }
 
     private ResultActions refresh(String refreshToken) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"refreshToken":"%s"}
-                        """.formatted(refreshToken)));
+        return mockMvc.perform(post("/api/v1/auth/refresh").cookie(RefreshCookies.cookie(refreshToken)));
     }
 
     private static String body(String current, String newPassword, String confirmation) {
