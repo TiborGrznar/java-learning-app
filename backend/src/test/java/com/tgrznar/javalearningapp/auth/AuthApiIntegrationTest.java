@@ -1,6 +1,7 @@
 package com.tgrznar.javalearningapp.auth;
 
 import com.jayway.jsonpath.JsonPath;
+import com.tgrznar.javalearningapp.testsupport.RefreshCookies;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -51,7 +52,7 @@ class AuthApiIntegrationTest {
         login(email, PASSWORD)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.refreshToken").isNotEmpty())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.role").value("STUDENT"));
     }
@@ -159,11 +160,10 @@ class AuthApiIntegrationTest {
         register(email, PASSWORD, PASSWORD).andExpect(status().isCreated());
         String oldRefreshToken = refreshTokenFrom(login(email, PASSWORD));
 
-        String response = refresh(oldRefreshToken)
+        String newRefreshToken = RefreshCookies.tokenFrom(refresh(oldRefreshToken)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andReturn().getResponse().getContentAsString();
-        String newRefreshToken = JsonPath.read(response, "$.refreshToken");
+                .andExpect(jsonPath("$.refreshToken").doesNotExist()));
 
         assertThat(newRefreshToken).isNotEqualTo(oldRefreshToken);
 
@@ -186,9 +186,7 @@ class AuthApiIntegrationTest {
         register(email, PASSWORD, PASSWORD).andExpect(status().isCreated());
         String refreshToken = refreshTokenFrom(login(email, PASSWORD));
 
-        mockMvc.perform(post("/api/v1/auth/logout")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"%s\"}".formatted(refreshToken)))
+        mockMvc.perform(post("/api/v1/auth/logout").cookie(RefreshCookies.cookie(refreshToken)))
                 .andExpect(status().isNoContent());
 
         refresh(refreshToken)
@@ -198,9 +196,7 @@ class AuthApiIntegrationTest {
 
     @Test
     void logout_succeedsForUnknownToken() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/logout")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"neexistujuci-token\"}"))
+        mockMvc.perform(post("/api/v1/auth/logout").cookie(RefreshCookies.cookie("neexistujuci-token")))
                 .andExpect(status().isNoContent());
     }
 
@@ -258,13 +254,12 @@ class AuthApiIntegrationTest {
     }
 
     private ResultActions refresh(String refreshToken) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"refreshToken\":\"%s\"}".formatted(refreshToken)));
+        return mockMvc.perform(post("/api/v1/auth/refresh").cookie(RefreshCookies.cookie(refreshToken)));
     }
 
     private String refreshTokenFrom(ResultActions loginResult) throws Exception {
-        return JsonPath.read(bodyOf(loginResult), "$.refreshToken");
+        loginResult.andExpect(status().isOk());
+        return RefreshCookies.tokenFrom(loginResult);
     }
 
     private String accessTokenFrom(ResultActions loginResult) throws Exception {

@@ -1,6 +1,5 @@
 package com.tgrznar.javalearningapp.auth;
 
-import com.tgrznar.javalearningapp.auth.dto.AuthResponse;
 import com.tgrznar.javalearningapp.auth.dto.ChangePasswordRequest;
 import com.tgrznar.javalearningapp.auth.exception.AccountDisabledException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
@@ -78,11 +77,11 @@ class AuthServiceChangePasswordTest {
         when(jwtService.getAccessTokenTtlSeconds()).thenReturn(900L);
         when(refreshTokenService.issue(user)).thenReturn("new-refresh-token");
 
-        AuthResponse response = authService.changePassword(USER_ID, request(CURRENT, NEW, NEW));
+        AuthTokens tokens = authService.changePassword(USER_ID, request(CURRENT, NEW, NEW));
 
-        assertThat(response.accessToken()).isEqualTo("access-token");
-        assertThat(response.refreshToken()).isEqualTo("new-refresh-token");
-        assertThat(response.role()).isEqualTo(UserRole.STUDENT);
+        assertThat(tokens.response().accessToken()).isEqualTo("access-token");
+        assertThat(tokens.refreshToken()).isEqualTo("new-refresh-token");
+        assertThat(tokens.response().role()).isEqualTo(UserRole.STUDENT);
         assertThat(user.getPasswordHash()).isNotEqualTo(NEW).isNotEqualTo(originalHash);
         assertThat(passwordEncoder.matches(NEW, user.getPasswordHash())).isTrue();
         assertThat(passwordEncoder.matches(CURRENT, user.getPasswordHash())).isFalse();

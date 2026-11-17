@@ -21,8 +21,13 @@ import java.util.List;
  * Retry-After. Because this filter is first, a preflight request is answered here and never reaches the
  * rate limiter, and every later answer (401, 403, 413, 429, 5xx) already carries the headers.
  * <p>
- * With no allowed origin nothing is registered, so the filter changes nothing. Credentials (cookies) are
- * not allowed; a variant that needs them has to switch that on explicitly.
+ * With no allowed origin nothing is registered, so the filter changes nothing. Otherwise credentials are
+ * allowed (Access-Control-Allow-Credentials: true), because the refresh token travels in a cookie: without
+ * it a browser would neither store the cookie from a cross-origin answer nor send it with the next call
+ * (the frontend must also send its requests with credentials: 'include'). This is safe only because the
+ * origins are exact; a wildcard is refused at startup by CorsProperties. The cookie itself is limited to
+ * /api/v1/auth and SameSite=Strict (see RefreshCookieFactory), and login, refresh and logout check the
+ * Origin header (OriginCheckInterceptor).
  */
 @Slf4j
 @Component
@@ -49,9 +54,10 @@ public class ApiCorsFilter extends CorsFilter {
             configuration.setAllowedMethods(METHODS);
             configuration.setAllowedHeaders(REQUEST_HEADERS);
             configuration.setExposedHeaders(EXPOSED_HEADERS);
+            configuration.setAllowCredentials(true);
             configuration.setMaxAge(properties.maxAge());
             source.registerCorsConfiguration("/api/**", configuration);
-            log.info("CORS is on for /api/** from: {}", properties.allowedOrigins());
+            log.info("CORS is on for /api/** (with credentials) from: {}", properties.allowedOrigins());
         }
         return source;
     }

@@ -2,11 +2,11 @@ package com.tgrznar.javalearningapp.auth;
 
 import com.tgrznar.javalearningapp.auth.dto.AuthResponse;
 import com.tgrznar.javalearningapp.auth.dto.LoginRequest;
-import com.tgrznar.javalearningapp.auth.dto.RefreshRequest;
 import com.tgrznar.javalearningapp.auth.dto.RegisterRequest;
 import com.tgrznar.javalearningapp.auth.exception.AccountDisabledException;
 import com.tgrznar.javalearningapp.auth.exception.EmailAlreadyExistsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
+import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
@@ -114,10 +114,11 @@ class AuthServiceTest {
         when(jwtService.getAccessTokenTtlSeconds()).thenReturn(900L);
         when(refreshTokenService.issue(user)).thenReturn("refresh-token");
 
-        AuthResponse response = authService.login(new LoginRequest("  Jano@Example.com ", PASSWORD));
+        AuthTokens tokens = authService.login(new LoginRequest("  Jano@Example.com ", PASSWORD));
+        AuthResponse response = tokens.response();
 
         assertThat(response.accessToken()).isEqualTo("access-token");
-        assertThat(response.refreshToken()).isEqualTo("refresh-token");
+        assertThat(tokens.refreshToken()).isEqualTo("refresh-token");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresInSeconds()).isEqualTo(900L);
         assertThat(response.role()).isEqualTo(UserRole.STUDENT);
@@ -174,11 +175,11 @@ class AuthServiceTest {
         when(jwtService.generateAccessToken(user)).thenReturn("new-access");
         when(jwtService.getAccessTokenTtlSeconds()).thenReturn(900L);
 
-        AuthResponse response = authService.refresh(new RefreshRequest("old-refresh"));
+        AuthTokens tokens = authService.refresh("old-refresh");
 
-        assertThat(response.accessToken()).isEqualTo("new-access");
-        assertThat(response.refreshToken()).isEqualTo("new-refresh");
-        assertThat(response.role()).isEqualTo(UserRole.STUDENT);
+        assertThat(tokens.response().accessToken()).isEqualTo("new-access");
+        assertThat(tokens.refreshToken()).isEqualTo("new-refresh");
+        assertThat(tokens.response().role()).isEqualTo(UserRole.STUDENT);
     }
 
     @Test
@@ -187,17 +188,41 @@ class AuthServiceTest {
         user.setActive(false);
         when(refreshTokenService.rotate("old-refresh")).thenReturn(new RefreshTokenService.RotatedToken(user, "new-refresh"));
 
-        assertThatThrownBy(() -> authService.refresh(new RefreshRequest("old-refresh")))
+        assertThatThrownBy(() -> authService.refresh("old-refresh"))
                 .isInstanceOf(AccountDisabledException.class);
 
         verify(jwtService, never()).generateAccessToken(any());
     }
 
     @Test
+    void refresh_withoutTokenIsRefusedWithoutTouchingTheTokens() {
+        assertThatThrownBy(() -> authService.refresh(null))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void refresh_withBlankTokenIsRefusedWithoutTouchingTheTokens() {
+        assertThatThrownBy(() -> authService.refresh("   "))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
     void logout_revokesTheGivenRefreshToken() {
-        authService.logout(new RefreshRequest("some-refresh"));
+        authService.logout("some-refresh");
 
         verify(refreshTokenService).revoke("some-refresh");
+    }
+
+    @Test
+    void logout_withoutTokenDoesNothing() {
+        authService.logout(null);
+        authService.logout("  ");
+
+        verifyNoInteractions(refreshTokenService);
     }
 
     private User activeUser() {

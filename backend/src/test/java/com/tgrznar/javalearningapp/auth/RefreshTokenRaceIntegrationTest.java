@@ -1,6 +1,7 @@
 package com.tgrznar.javalearningapp.auth;
 
 import com.jayway.jsonpath.JsonPath;
+import com.tgrznar.javalearningapp.testsupport.RefreshCookies;
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -107,7 +108,7 @@ class RefreshTokenRaceIntegrationTest {
                 assertThat((String) JsonPath.read(loser.getContentAsString(), "$.code"))
                         .isEqualTo("INVALID_REFRESH_TOKEN");
 
-                token = JsonPath.read(winner.getContentAsString(), "$.refreshToken");
+                token = RefreshCookies.tokenFrom(winner);
                 // One token was exchanged for one new token, never for two.
                 assertThat(activeTokens()).as("active tokens after round %d", round).isEqualTo(1);
             }
@@ -119,18 +120,16 @@ class RefreshTokenRaceIntegrationTest {
     // ---------- helpers ----------
 
     private String login() throws Exception {
-        String response = mockMvc.perform(post("/api/v1/auth/login")
+        MockHttpServletResponse response = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"" + PASSWORD + "\"}"))
                 .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-        return JsonPath.read(response, "$.refreshToken");
+                .andReturn().getResponse();
+        return RefreshCookies.tokenFrom(response);
     }
 
     private MockHttpServletResponse refresh(String refreshToken) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+        return mockMvc.perform(post("/api/v1/auth/refresh").cookie(RefreshCookies.cookie(refreshToken)))
                 .andReturn().getResponse();
     }
 

@@ -2,6 +2,7 @@ package com.tgrznar.javalearningapp.user.admin.api;
 
 import com.jayway.jsonpath.JsonPath;
 import com.tgrznar.javalearningapp.auth.token.RefreshTokenService;
+import com.tgrznar.javalearningapp.testsupport.RefreshCookies;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRole;
 import jakarta.persistence.EntityManager;
@@ -235,9 +236,7 @@ class AdminUserPasswordResetApiIntegrationTest extends AdminUserApiTestSupport {
     }
 
     private ResultActions refresh(String refreshToken) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"refreshToken\":\"" + refreshToken + "\"}"));
+        return mockMvc.perform(post("/api/v1/auth/refresh").cookie(RefreshCookies.cookie(refreshToken)));
     }
 
     private static String resetUrl(User target) {

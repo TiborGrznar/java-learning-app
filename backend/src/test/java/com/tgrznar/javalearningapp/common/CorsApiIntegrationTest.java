@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tgrznar.javalearningapp.testsupport.TestcontainersConfiguration;
@@ -110,5 +111,34 @@ class CorsApiIntegrationTest {
         }
 
         getMe(ALLOWED, ip).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void preflight_fromAllowedOrigin_allowsCredentials() throws Exception {
+        preflight(ALLOWED, "POST", "10.30.0.7")
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+    }
+
+    @Test
+    void refreshFromAllowedOrigin_reachesTheController_andTheAnswerCarriesTheCredentialsHeaders() throws Exception {
+        // No cookie, so the controller answers 401. The point: the Origin check lets a listed origin through
+        // and the browser may read the answer, including the error code.
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header(HttpHeaders.ORIGIN, ALLOWED)
+                        .with(from("10.30.0.8")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+    }
+
+    @Test
+    void refreshFromAnOriginThatIsNotListed_isRefusedBeforeItReachesTheController() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header(HttpHeaders.ORIGIN, "https://evil.test")
+                        .with(from("10.30.0.9")))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
     }
 }

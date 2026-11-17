@@ -3,13 +3,13 @@ package com.tgrznar.javalearningapp.auth;
 import com.tgrznar.javalearningapp.auth.dto.AuthResponse;
 import com.tgrznar.javalearningapp.auth.dto.ChangePasswordRequest;
 import com.tgrznar.javalearningapp.auth.dto.LoginRequest;
-import com.tgrznar.javalearningapp.auth.dto.RefreshRequest;
 import com.tgrznar.javalearningapp.auth.dto.RegisterRequest;
 import com.tgrznar.javalearningapp.auth.exception.AccountDisabledException;
 import com.tgrznar.javalearningapp.auth.exception.EmailAlreadyExistsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidAccessTokenException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCredentialsException;
 import com.tgrznar.javalearningapp.auth.exception.InvalidCurrentPasswordException;
+import com.tgrznar.javalearningapp.auth.exception.InvalidRefreshTokenException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordMismatchException;
 import com.tgrznar.javalearningapp.auth.exception.PasswordUnchangedException;
 import com.tgrznar.javalearningapp.auth.security.JwtService;
@@ -21,6 +21,7 @@ import com.tgrznar.javalearningapp.ratelimit.RateLimiters;
 import com.tgrznar.javalearningapp.user.model.User;
 import com.tgrznar.javalearningapp.user.model.UserRepository;
 import com.tgrznar.javalearningapp.user.model.UserRole;
+import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -96,7 +97,7 @@ public class AuthService {
      * failures count and a successful login clears the counter, so the block is short and never permanent.
      */
     @Transactional
-    public AuthResponse login(LoginRequest request) {
+    public AuthTokens login(LoginRequest request) {
         String email = normalizeEmail(request.email());
         String limiterKey = LimiterKeys.hashed(email);
         loginFailures.check(limiterKey);
@@ -117,25 +118,36 @@ public class AuthService {
         }
 
         loginFailures.clear(limiterKey);
-        return buildResponse(user, refreshTokenService.issue(user));
+        return buildTokens(user, refreshTokenService.issue(user));
     }
 
-    /** Exchanges a valid refresh token for a new access and refresh token pair (rotation). */
+    /**
+     * Exchanges a valid refresh token for a new access token and a new refresh token (rotation). The token
+     * comes from the cookie; a missing or blank one is refused like an unknown one, without touching the database.
+     */
     @Transactional
-    public AuthResponse refresh(RefreshRequest request) {
-        RefreshTokenService.RotatedToken rotated = refreshTokenService.rotate(request.refreshToken());
+    public AuthTokens refresh(@Nullable String rawRefreshToken) {
+        if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
+            throw new InvalidRefreshTokenException();
+        }
+
+        RefreshTokenService.RotatedToken rotated = refreshTokenService.rotate(rawRefreshToken);
 
         if (!rotated.user().isActive()) {
             // Throwing rolls the transaction back, so the old token stays as it was.
             throw new AccountDisabledException();
         }
 
-        return buildResponse(rotated.user(), rotated.refreshToken());
+        return buildTokens(rotated.user(), rotated.refreshToken());
     }
 
+    /** Revokes the token if there is one. Without a token there is nothing to do, so logout never fails. */
     @Transactional
-    public void logout(RefreshRequest request) {
-        refreshTokenService.revoke(request.refreshToken());
+    public void logout(@Nullable String rawRefreshToken) {
+        if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
+            return;
+        }
+        refreshTokenService.revoke(rawRefreshToken);
     }
 
     /**
@@ -146,7 +158,7 @@ public class AuthService {
      * that were already issued stay valid until they expire.
      */
     @Transactional
-    public AuthResponse changePassword(Long userId, ChangePasswordRequest request) {
+    public AuthTokens changePassword(Long userId, ChangePasswordRequest request) {
         if (!request.newPassword().equals(request.confirmNewPassword())) {
             throw new PasswordMismatchException();
         }
@@ -175,7 +187,7 @@ public class AuthService {
 
         // Never log the password.
         log.info("Password changed: userId={}", userId);
-        return buildResponse(user, refreshTokenService.issue(user));
+        return buildTokens(user, refreshTokenService.issue(user));
     }
 
     /** A password longer than BCrypt can hash cannot be the current one, so the encoder is not asked about it. */
@@ -186,13 +198,13 @@ public class AuthService {
         return passwordEncoder.matches(candidate, user.getPasswordHash());
     }
 
-    private AuthResponse buildResponse(User user, String refreshToken) {
-        return new AuthResponse(
+    private AuthTokens buildTokens(User user, String refreshToken) {
+        AuthResponse response = new AuthResponse(
                 jwtService.generateAccessToken(user),
-                refreshToken,
                 TOKEN_TYPE,
                 jwtService.getAccessTokenTtlSeconds(),
                 user.getRole());
+        return new AuthTokens(response, refreshToken);
     }
 
     private String normalizeEmail(String email) {

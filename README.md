@@ -11,7 +11,7 @@ Work in progress.
 | Area | State       |
 |------|-------------|
 | Database schema (Flyway) and JPA entities | Done        |
-| Authentication (JWT access token + rotating refresh token) | Done        |
+| Authentication (JWT access token + rotating refresh token in an HttpOnly cookie) | Done        |
 | Administrator: school, user, class, module and quiz question management | Done        |
 | Classes and student enrollment with a join code | Done        |
 | Teacher: own classes and their join codes | Done        |
@@ -33,11 +33,11 @@ All endpoints are prefixed with `/api/v1`. Everything except the four public `/a
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
 | POST | `/auth/register` | public | Creates a student account (`201`). The role is always `STUDENT` |
-| POST | `/auth/login` | public | Returns an access token (15 min) and a refresh token (7 days) |
-| POST | `/auth/refresh` | public | Exchanges a refresh token for a new token pair, the old refresh token is revoked. A refresh token works once: if two requests send the same token at the same time, exactly one gets a new pair and the other one gets `401`. A deactivated account is refused (`ACCOUNT_DISABLED`) |
-| POST | `/auth/logout` | public | Revokes the given refresh token (`204`) |
+| POST | `/auth/login` | public | Returns an access token (15 min) in the body and sets the refresh token (7 days) in an HttpOnly cookie (see [Refresh token cookie](#refresh-token-cookie)). `Cache-Control: no-store`. The `Origin` header is checked |
+| POST | `/auth/refresh` | public | Reads the refresh token from the cookie and answers like the login: a new access token in the body and a new cookie, the old refresh token is revoked. No body is needed. A refresh token works once: if two requests send the same token at the same time, exactly one gets a new pair and the other one gets `401`. No cookie: `401 INVALID_REFRESH_TOKEN`. A deactivated account is refused (`ACCOUNT_DISABLED`). The `Origin` header is checked |
+| POST | `/auth/logout` | public | Revokes the refresh token from the cookie and clears the cookie (always `204`, also without a cookie or with an unknown one). The `Origin` header is checked |
 | GET | `/users/me` | any signed-in user | Profile of the signed-in user |
-| PUT | `/users/me/password` | any signed-in user | Changes the own password. Body `currentPassword`, `newPassword`, `confirmNewPassword`. Revokes all refresh tokens and answers with a new token pair (same shape as the login, `Cache-Control: no-store`), so the caller stays signed in and the other devices have to log in again |
+| PUT | `/users/me/password` | any signed-in user | Changes the own password. Body `currentPassword`, `newPassword`, `confirmNewPassword`. Revokes all refresh tokens and answers like the login (a new access token in the body, a new refresh token cookie, `Cache-Control: no-store`), so the caller stays signed in and the other devices have to log in again |
 | POST | `/schools` | `ADMIN` | Creates a school (`201`). The name must be unique |
 | GET | `/schools` | `ADMIN` | Lists schools |
 | GET | `/schools/{id}` | `ADMIN` | Detail of a school |
@@ -152,11 +152,12 @@ Rules of classes and enrollment:
 | 400 | `INVALID_QUIZ_TOKEN` | The quiz token is malformed or was issued for someone else, load the quiz again |
 | 413 | `PAYLOAD_TOO_LARGE` | The request body exceeds the allowed size, a client bug |
 | 401 | `INVALID_CREDENTIALS` | Wrong e-mail or password (the same answer for both) |
-| 401 | `INVALID_REFRESH_TOKEN` | The refresh token is unknown, expired, revoked or already used. Also returned after the account was deactivated, because deactivation revokes all its refresh tokens |
+| 401 | `INVALID_REFRESH_TOKEN` | The refresh token cookie is missing, or its token is unknown, expired, revoked or already used. Also returned after the account was deactivated, because deactivation revokes all its refresh tokens. A visitor who is not signed in gets it from `/auth/refresh` too, it is a normal answer and not an error of the client |
 | 401 | `INVALID_TOKEN` | The access token is valid, but its user no longer exists (rare: the user was deleted between the check in the security filter and the call of the service) |
 | 401 | `UNAUTHENTICATED` | No access token was sent, or it is invalid or expired, or its user is deactivated or no longer exists |
 | 403 | `ACCOUNT_DISABLED` | The account is deactivated (answered by the login and the token refresh; an access token of a deactivated user gets `401 UNAUTHENTICATED`) |
 | 403 | `ACCESS_DENIED` | The role of the user does not allow the operation |
+| 403 | `ORIGIN_NOT_ALLOWED` | `/auth/login`, `/auth/refresh` or `/auth/logout` was called with an `Origin` header that is not trusted (see [Refresh token cookie](#refresh-token-cookie)) |
 | 403 | `MODULE_LOCKED` | The quiz of the previous module has not been passed yet |
 | 403 | `NOT_ENROLLED` | The student has not joined a class yet |
 | 404 | `SCHOOL_NOT_FOUND` | The school does not exist |
@@ -200,7 +201,7 @@ Limits are kept in memory (`ratelimit/RateLimiter`, a sliding window), so they r
 |------|-----|---------|
 | `POST /auth/login` | client IP | 10 per 15 minutes |
 | `POST /auth/register` | client IP | 5 per hour |
-| `POST /auth/refresh` | client IP | 30 per minute |
+| `POST /auth/refresh` | client IP | 120 per minute |
 | any other request under `/api/v1/` | client IP | 600 per minute |
 | failed logins | hash of the e-mail, any IP | 5 per 15 minutes |
 | quiz load | student id | 20 per minute |
@@ -215,7 +216,7 @@ All values are configurable under `app.rate-limit.*`. A limit answers `429 RATE_
 
 CORS preflight requests (`OPTIONS`) do not count towards any limit, and a `429` answer carries the CORS headers, so a browser client can read `Retry-After` (the header is exposed).
 
-Known trade-offs: anyone who knows an e-mail can block logins to it for the length of the window (only failures count and a successful login clears the counter, so the block is short). A school behind one public address shares the registration and general limits, raise them in the configuration if needed.
+Known trade-offs: anyone who knows an e-mail can block logins to it for the length of the window (only failures count and a successful login clears the counter, so the block is short). A school behind one public address shares the registration and general limits, raise them in the configuration if needed. The refresh limit is higher than the others on purpose: the access token lives only in the memory of the browser, so every page load and every new tab calls `/auth/refresh`, and a school can sit behind one public address.
 
 ## CORS and the frontend
 
@@ -225,9 +226,47 @@ To allow a frontend on another origin, set `CORS_ALLOWED_ORIGINS` (comma separat
 
 - Only exact origins are accepted: `scheme://host[:port]`, no wildcard, path, query or user info. A wrong value stops the application at startup.
 - Applies to `/api/**` only, methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, request headers `Authorization` and `Content-Type`, preflight cached for `app.cors.max-age` (default 1 hour).
-- No credentials (cookies) are allowed yet. The tokens travel in the `Authorization` header.
+- Credentials are allowed (`Access-Control-Allow-Credentials: true`) because the refresh token travels in a cookie. This is why a wildcard origin is refused at startup. A cross-origin frontend must send `credentials: 'include'` (fetch) on `/auth/login`, `/auth/refresh`, `/auth/logout` and `PUT /users/me/password`. The access token still travels in the `Authorization` header.
 - The filter runs before the body size and rate limit filters and before Spring Security, so `401`, `413` and `429` answers also carry the CORS headers and the browser can show the error.
 - A request from an origin that is not allowed gets `403` with the plain text `Invalid CORS request`, not the JSON error body.
+
+## Refresh token cookie
+
+The access token (15 minutes) is returned in the response body and the client keeps it in memory only. The refresh token (7 days) never appears in a body, it travels in a cookie that JavaScript cannot read.
+
+| Attribute | Value | Why |
+|-----------|-------|-----|
+| Name | `jla_refresh_token` | |
+| `HttpOnly` | yes | a script cannot read the token, so an XSS cannot steal it |
+| `Secure` | `true` by default (`REFRESH_COOKIE_SECURE`) | the cookie is sent over HTTPS only |
+| `SameSite` | `Strict` | the cookie is not sent on requests started from another site |
+| `Path` | `/api/v1/auth` | the browser sends it only to the login, refresh and logout endpoints |
+| `Max-Age` | the refresh token lifetime (default 7 days) | |
+| `Domain` | not set | the cookie belongs to the exact host of the API |
+
+The `__Host-` prefix is not possible (it requires `Path=/`) and `__Secure-` is not used because `Secure` is configurable.
+
+**Origin check (protection against CSRF).** `SameSite` works by site, not by origin: a page on another port or on a sibling subdomain is the same site. The API has CSRF protection off (stateless tokens) and, with CORS off, nothing else stops a cross-origin `POST`. So `POST /auth/login`, `/auth/refresh` and `/auth/logout` check the `Origin` header:
+
+- no `Origin` header: allowed (a browser always sends it on a `POST`, so this is a non-browser client);
+- `Origin` in the trusted set (`AUTH_ALLOWED_ORIGINS` together with `CORS_ALLOWED_ORIGINS`): allowed;
+- any other `Origin`: `403 ORIGIN_NOT_ALLOWED`, logged as a warning;
+- the trusted set is empty: every request with an `Origin` is refused (fail closed). A setup with the frontend and the API on one origin must therefore list that origin in `AUTH_ALLOWED_ORIGINS`.
+
+Registration and the password change are not checked: they do not read the cookie (the password change authenticates with the `Authorization` header).
+
+**Failed refresh.** The cookie is not cleared when `/auth/refresh` fails. With two tabs, the tab that loses the race would otherwise delete the new cookie of the winner. `/auth/logout` always clears it.
+
+**Behind a reverse proxy.** The cookie `Path` is `/api/v1/auth`, so the proxy must pass the `/api` prefix unchanged. A proxy that strips or rewrites it makes the browser stop sending the cookie.
+
+**Notes for the frontend**
+
+- Call `/auth/refresh` on startup to get the first access token. A visitor who is not signed in gets `401 INVALID_REFRESH_TOKEN`, which is a normal answer.
+- Keep one refresh in flight at a time (for example with the Web Locks API, so also across tabs) and retry the original request once after a `401`.
+- With a proxy (same origin) no extra option is needed; cross-origin use `credentials: 'include'`.
+
+Known limits: an XSS can still call `/auth/refresh` from the page (`HttpOnly` protects against theft of the token, not against its use), so the content security policy and the escaping of user content stay important. The rate limiters are in the memory of one instance.
+
 ## OpenAPI description and Swagger UI
 
 The API is described by springdoc-openapi, **off by default**. Set `API_DOCS_ENABLED=true` to turn it on:
@@ -378,6 +417,8 @@ Fill in the values in `.env` (it is git-ignored and must never be committed):
 | `JWT_SECRET` | Base64-encoded HMAC key, at least 256 bits. Required, there is no default |
 | `JWT_ACCESS_TTL` | Optional, access token lifetime (default `15m`) |
 | `JWT_REFRESH_TTL` | Optional, refresh token lifetime (default `7d`) |
+| `REFRESH_COOKIE_SECURE` | Optional, `Secure` attribute of the refresh token cookie (default `true`). Set `false` only for plain HTTP development outside localhost; the application logs a warning. Chrome treats `localhost` as secure, so the default works there too |
+| `AUTH_ALLOWED_ORIGINS` | Optional, comma separated origins that may call login, refresh and logout (default empty). Together with `CORS_ALLOWED_ORIGINS` they form the trusted set. Empty means every request with an `Origin` header is refused, so set it to the public origin of the frontend, in development `http://localhost:5173`. See [Refresh token cookie](#refresh-token-cookie) |
 | `ADMIN_EMAIL` | Optional, e-mail of the first administrator (see [First administrator](#first-administrator)) |
 | `ADMIN_PASSWORD` | Optional, password of the first administrator: at least 12 characters, at most 72 bytes. Remove it from the environment after the first start |
 | `ADMIN_NAME` | Optional, first name of the first administrator (default `Admin`) |
@@ -470,6 +511,7 @@ Never put the real administrator password into shell commands or tools such as P
 │       ├── main/
 │       │   ├── java/com/tgrznar/javalearningapp/
 │       │   │   ├── auth/         authentication
+│       │   │   │   ├── cookie/       refresh token cookie factory, properties and the Origin check
 │       │   │   │   ├── dto/          request and response records
 │       │   │   │   ├── exception/    authentication exceptions
 │       │   │   │   ├── security/     JWT service, filter, security config, 401/403 JSON handlers
