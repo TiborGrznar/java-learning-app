@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+/*
+ * Design tokens. Every colour, space, radius, shadow and font size used by the application
+ * comes from here. Brand colours come from the system documentation (chapter 2.4):
+ * dark blue #0D1B2A and orange accent #F4761A.
+ *
+ * Values are written as plain hex codes (not var() references) so that Tailwind can drop the
+ * tokens nobody uses without breaking the ones that point at them.
+ */
+@theme {
+  /* Remove Tailwind's default palette and sizes so that only our own tokens exist. */
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  /* One spacing step is 4px: p-1 = 4px, p-4 = 16px, p-6 = 24px. */
+  --spacing: 4px;
+
+  /* Brand */
+  --color-navy-900: #0d1b2a;
+  --color-navy-800: #14263a;
+  --color-navy-700: #1d3550;
+  --color-navy-600: #2a4a6b;
+  --color-accent-600: #d9620d;
+  --color-accent-500: #f4761a;
+  --color-accent-100: #fdebdc;
+
+  /* Neutrals (slightly blue, to sit with the navy) */
+  --color-gray-950: #0b1220;
+  --color-gray-800: #263242;
+  --color-gray-600: #4d5b6e;
+  --color-gray-500: #6b7a8f;
+  --color-gray-400: #98a4b5;
+  --color-gray-300: #c7cfda;
+  --color-gray-200: #e1e6ed;
+  --color-gray-100: #eef1f5;
+  --color-gray-50: #f6f8fa;
+  --color-white: #ffffff;
+
+  /* Status */
+  --color-success-700: #1b6e3c;
+  --color-success-100: #dff3e7;
+  --color-danger-700: #a42323;
+  --color-danger-100: #fbe3e3;
+  --color-warning-700: #8a5a00;
+  --color-warning-100: #fcefcf;
+  --color-info-700: #1f5f99;
+  --color-info-100: #e0eefb;
+
+  /* Semantic names, used in components (bg-canvas, text-ink, border-line, ...) */
+  --color-canvas: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-line: #e1e6ed;
+  --color-line-strong: #c7cfda;
+  --color-ink: #0b1220;
+  --color-ink-muted: #4d5b6e;
+  --color-ink-subtle: #6b7a8f;
+  --color-primary: #f4761a;
+  --color-primary-hover: #d9620d;
+  --color-on-primary: #0d1b2a;
+  --color-focus: #2f80ed;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Shadows (two levels only) */
+  --shadow-sm: 0 1px 2px rgb(13 27 42 / 8%);
+  --shadow-md: 0 4px 16px rgb(13 27 42 / 12%);
+
+  /* Typography */
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.625rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 2.125rem;
+  --text-2xl--line-height: 2.5rem;
+
+  /* Page width: max-w-content */
+  --container-content: 70rem;
+}
+
+/* Page defaults. Tailwind's preflight already resets margins, box-sizing and headings. */
+@layer base {
+  body {
+    @apply bg-canvas font-sans text-base text-ink antialiased;
+  }
+}
