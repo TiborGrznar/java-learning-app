@@ -24,7 +24,7 @@ Work in progress.
 | Sandboxed execution of student code | Done           |
 | Password change (own) and password reset by an administrator | Done |
 | Preparation for the frontend: opt-in CORS, OpenAPI description and Swagger UI | Done |
-| Frontend (React + TypeScript) | Not started |
+| Frontend (React + TypeScript) | In progress (skeleton: login, registration, session handling) |
 
 ## API
 
@@ -388,7 +388,7 @@ Docker Desktop is enough for development. In production run Docker rootless or u
 
 - **Backend:** Java 25, Spring Boot 4.1, Spring Data JPA, Spring Security, JJWT, springdoc-openapi, Lombok, Maven
 - **Database:** MySQL 8.4 LTS (Docker for local development), Flyway migrations
-- **Frontend (planned):** React, TypeScript, Vite, Monaco Editor
+- **Frontend:** React, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query, Zustand (Monaco Editor is planned)
 - **Code runner:** a separate Spring Boot service (`runner/`) that runs student code in disposable Docker containers
   Architecture: three layers (presentation, application, data) with role-based access control (student, teacher, admin).
 ## Prerequisites
@@ -396,7 +396,9 @@ Docker Desktop is enough for development. In production run Docker rootless or u
 - JDK 25
 - Docker (for the local MySQL container, for the tests, which start their own MySQL container, and for the code runner)
 - Git
+- Node.js 20.19, 22.12 or newer, 24 recommended (for the frontend)
   Maven is not required, the repository contains the Maven Wrapper.
+  
 ## Getting started
 
 ### 1. Configure environment variables
@@ -474,6 +476,18 @@ cd backend
 
 The tests need a running Docker, nothing else: no database container from step 2 and no environment variables. The integration tests start their own throwaway MySQL 8.4 container with [Testcontainers](https://java.testcontainers.org/) (one container for the whole run, removed afterwards) and Flyway applies all migrations to it from scratch, so the development database is never touched. Most tests are rolled back, so they do not depend on each other. The concurrency tests (single-use quiz token, atomic refresh token rotation) cannot run in one transaction, because parallel requests must see committed data, so each of them removes its own data in the end. A test-only JWT secret lives in `backend/src/test/resources/application-dev.yaml`.
 
+### 5. Run the frontend
+
+The frontend needs the backend from step 3 running. The backend must trust the origin of the Vite dev server, so add `AUTH_ALLOWED_ORIGINS=http://localhost:5173` to `.env` (see [Refresh token cookie](#refresh-token-cookie)).
+
+```
+cd frontend
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173`. Use `localhost`, not an IP address: the refresh token cookie is `Secure`, and browsers accept it only on `localhost` or HTTPS. The Vite dev server forwards `/api` to `http://localhost:8080`, so the browser talks to one origin only. Checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
+
 ## Continuous integration
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push to any branch, on pull requests to `main` and on demand. Three jobs run in parallel: `backend` (build and all tests, the integration tests start their own MySQL container with Testcontainers and use the test-only configuration from `src/test/resources`, so no database service and no secrets are needed), `runner` (build and unit tests) and `sandbox` (builds the sandbox image and runs the tests that start real containers; it fails if any of them was skipped). Docker is preinstalled on the runner. A newer run of the same branch or pull request cancels the older one, runs on `main` are never cancelled.
@@ -546,6 +560,14 @@ Never put the real administrator password into shell commands or tools such as P
 │       │       ├── application.yaml
 │       │       └── db/migration/ Flyway migrations (V1 to V7)
 │       └── test/             unit and integration tests, testsupport/ holds the Testcontainers setup and shared fixtures
+├── frontend/             React application (Vite, TypeScript, Tailwind CSS)
+│   └── src/
+│       ├── api/              HTTP call, session (token in memory, refresh), error type, query client
+│       ├── app/              App, routes, application shell
+│       ├── components/       shared UI components (Alert, Button, Spinner, TextField)
+│       ├── features/         auth (login, registration, route guards), errors, home
+│       ├── styles/           global.css with the Tailwind theme (design tokens)
+│       └── test/             test setup and helpers (fetch mock)
 ├── runner/               Code runner service (Spring Boot)
 │   ├── sandbox/              Dockerfile and launcher.sh of the sandbox image
 │   └── src/                  run/ (POST /run), sandbox/ (docker, config, exception, result), security/, health/
